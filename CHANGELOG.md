@@ -35,6 +35,7 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Persistent notes have been fixed after the previous discord.py update.
 - `is_image` now is true only if the image is actually an image.
 - Fix contact command reporting user was blocked when they weren't.
+- Cleanup imports after removing/unloading a plugin. ([PR #3226](https://github.com/modmail-dev/Modmail/pull/3226))
 
 ### Internal
 - Add `update_title` and `update_nsfw` methods to `ApiClient` to update thread title and nsfw status in the database.
