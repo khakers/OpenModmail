@@ -80,6 +80,7 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Fixed uncached member issue in large guild for react_to_contact and ticket creation.
 - Fixed blocked roles improperly saving in `blocked_users` config.
 - Fixed `?block` command improperly parsing reason as timestamp. 
+- Rate limit issue when fetch the messages due to reaction linking. ([PR #3306](https://github.com/modmail-dev/Modmail/pull/3306))
 
 ### Internal
 - `ConfigManager.get` no longer accepts two positional arguments: the `convert` argument is now keyword-only.
