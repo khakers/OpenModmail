@@ -52,6 +52,7 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Support for trailing space in `?prefix` command, example: `?prefix "mm "` for `mm ping`.
 - Added logviewer as built-in local plugin `?plugin load @local/logviewer`.
 - `?plugin uninstall` is now an alias for `?plugin remove` ([GH #3260](https://github.com/modmail-dev/modmail/issues/3260))
+- `DISCORD_LOG_LEVEL` environment variable to set the log level of discord.py. ([PR #3216](https://github.com/modmail-dev/Modmail/pull/3216))
 
 ### Changed
 - Guild icons in embed footers and author urls now have a fixed size of 128. ([PR #3261](https://github.com/modmail-dev/modmail/pull/3261))
@@ -79,6 +80,9 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 
 ### Internal
 - `ConfigManager.get` no longer accepts two positional arguments: the `convert` argument is now keyword-only.
+
+### Internal
+- Renamed `Bot.log_file_name` to `Bot.log_file_path`. Log files are now created at `temp/logs/modmail.log`. ([PR #3216](https://github.com/modmail-dev/Modmail/pull/3216))
 
 # v4.0.2
 
