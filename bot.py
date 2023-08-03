@@ -34,7 +34,7 @@ try:
 except ImportError:
     pass
 
-from core import checks
+from core import checks, migrations
 from core.changelog import Changelog
 from core.clients import ApiClient, MongoDBClient, PluginDatabaseClient
 from core.config import ConfigManager
@@ -576,12 +576,18 @@ class ModmailBot(commands.Bot):
             )
             logger.line()
 
+        # Check if the legacy blocklist is being used
         if len(self.config["blocked"]) > 0 or len(self.config["blocked_roles"]) > 0:
-            logger.warning(
-                "Un-migrated blocklists found. Please run the '[p]migrate blocklist' command after backing "
-                "up your config/database. Blocklist functionality will be disabled until this is done."
-            )
-            logger.line()
+            # This should only run in the host has decided on it, which is why it's environment variable based
+            if "UNATTENDED_MIGRATION" in os.environ.items() and os.environ["UNATTENDED_MIGRATION"].lower() == "true":
+                logger.info("running unattended blocklist migration")
+                await migrations.migrate_blocklist(self)
+            else:
+                logger.warning(
+                    "Un-migrated blocklists found. Please run the '[p]migrate blocklist' command after backing "
+                    "up your config/database. Blocklist functionality will be disabled until this is done."
+                )
+                logger.line()
 
         await self.threads.populate_cache()
 
