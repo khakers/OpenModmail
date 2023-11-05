@@ -32,3 +32,51 @@ force-exclude = true
 [tool.ruff.mccabe]
 # Unlike Flake8, default to a complexity level of 10.
 max-complexity = 25
+
+
+[tool.pdm]
+[[tool.pdm.source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "black",
+    "ruff",
+    "tomli",
+    "typing-extensions==4.6.3",
+    "pre-commit",
+]
+[project]
+name = "Discord-Modmail"
+version = "4.2.0"
+description = "Fork of a feature rich Discord Modmail bot written in Python."
+authors = [
+    {name = "", email = ""},
+]
+dependencies = [
+    "aiohttp~=3.8.1",
+    "colorama~=0.4.5",
+    "emoji~=1.7.0",
+    "isodate~=0.6.0",
+    "motor~=3.1.2",
+    "natural~=0.2.0",
+    "parsedatetime~=2.6",
+    "python-dateutil~=2.8.1",
+    "python-dotenv~=1.0.0",
+    "uvloop~=0.17.0; sys_platform != \"win32\"",
+    "requests~=2.31.0",
+    "attrs~=23.1.0",
+    "cairocffi~=1.3.0",
+    "cffi~=1.15.0",
+    "strenum",
+    "discord-py==2.3.0",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "AGPL-3.0-or-later"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
