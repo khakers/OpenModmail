@@ -80,3 +80,7 @@ license = {text = "AGPL-3.0-or-later"}
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
+
+[tool.pdm.scripts]
+requirements = "pdm export -o requirements.txt --without-hashes"
+bot = "bot.py"
