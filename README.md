@@ -127,8 +127,9 @@ This project has included pre-commit script that automatically runs black and ru
     ```
 2. Install the pre-commit hook
     ```console
-    $ pdm run pre-commit install
+    $ pdm install --plugins
     ```
+   The pre-commit hook should be automatically installed
     
 Alternatively, you can also lint the codebase manually
 

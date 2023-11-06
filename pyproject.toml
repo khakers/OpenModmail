@@ -35,6 +35,9 @@ max-complexity = 25
 
 
 [tool.pdm]
+plugins = [
+    "sync-pre-commit-lock"
+]
 [[tool.pdm.source]]
 name = "pypi"
 url = "https://pypi.org/simple"
@@ -82,5 +85,20 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm.scripts]
+# $ pdm requirements
 requirements = "pdm export -o requirements.txt --without-hashes"
+# $ pdm run bot
+# OR
+# $ pdm bot
 bot = "bot.py"
+
+# Manually sync with pdm sync-pre-commit
+[tool.sync-pre-commit-lock]
+# Run `pre-commit install` automatically if applicable
+automaticall-install-hooks = true
+# Should we sync your pre-commit versions with your lockfile (when running lock, add, update, remove, etc.)?
+disable-sync-from-lock = false
+# Packages to ignore when syncing from lock
+ignore = []
+# Name of the pre-commit config file to sync with
+pre-commit-config-file = ".pre-commit-config.yaml"
