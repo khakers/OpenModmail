@@ -179,6 +179,7 @@ class ConfigManager:
         "log_level": "INFO",
         # data collection
         "data_collection": True,
+        "use_in_database_image_store": True,
     }
 
     colors = {"mod_color", "recipient_color", "main_color", "error_color"}

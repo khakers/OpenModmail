@@ -1170,5 +1170,14 @@
             "If this configuration is enabled, only roles that are hoisted (displayed seperately in member list) will be used. If a user has no hoisted roles, it will return 'None'.",
             "If you would like to display the top role of a user regardless of if it's hoisted or not, disable `use_hoisted_top_role`."
         ]
+    },
+    "use_in_database_image_store": {
+        "default": "Yes",
+        "description": "Controls if images should be stored in the database as base64 strings.",
+        "examples": [],
+        "notes": [
+            "If this configuration is enabled, images will be stored in the database. If disabled, images will be stored as Discord CDN links.",
+            "This configuration can only be set through `.env` file or environment (config) variables."
+        ]
     }
 }
