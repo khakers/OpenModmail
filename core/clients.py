@@ -647,7 +647,7 @@ class MongoDBClient(ApiClient):
 
     async def _handle_attachments(self, message: Message) -> list:
         attachments = []
-        in_db_storage = self.bot.config.get("in_db_storage")
+        in_db_storage = self.bot.config.get("use_in_database_image_store")
         # 8 MB to bytes
         image_max_size = 1024 * 1024 * 8
 

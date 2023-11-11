@@ -225,6 +225,7 @@ class ConfigManager:
         "use_hoisted_top_role",
         "enable_presence_intent",
         "registry_plugins_only",
+        "use_in_database_image_store",
     }
 
     enums = {
