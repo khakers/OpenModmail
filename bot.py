@@ -1197,7 +1197,7 @@ class ModmailBot(commands.Bot):
 
         await self.process_commands(message)
 
-    async def process_commands(self, message):
+    async def process_commands(self, message: discord.Message):
         if message.author.bot:
             return
 
@@ -1231,7 +1231,8 @@ class ModmailBot(commands.Bot):
                     or self.config.get("anon_reply_without_command")
                     or self.config.get("plain_reply_without_command")
                 ):
-                    await thread.reply(message, anonymous=anonymous, plain=plain)
+                    if not message.content.startswith(self.config.get("ignore_prefix")):
+                        await thread.reply(message, anonymous=anonymous, plain=plain)
                 else:
                     await self.api.append_log(message, type_="internal")
             elif ctx.invoked_with:
