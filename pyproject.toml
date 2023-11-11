@@ -52,9 +52,9 @@ dev = [
     "pre-commit",
 ]
 [project]
-name = "Discord-Modmail"
+name = "Discord-OpenModmail"
 version = "4.2.0"
-description = "Fork of a feature rich Discord Modmail bot written in Python."
+description = "Fork² of a feature rich Discord Modmail bot written in Python."
 authors = [
     {name = "", email = ""},
 ]

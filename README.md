@@ -1,18 +1,12 @@
 <div align="center">
   <img src="https://modmail-docs.netlify.app/logo-long.png" align="center">
   <br>
-  <strong><i>Fork of a feature-rich Modmail bot for Discord written in Python.</i></strong>
+  <strong><i>Fork² of a feature-rich Modmail bot for Discord written in Python.</i></strong>
   <br>
   <br>
 
   <a href="#">
     <img src="https://img.shields.io/badge/Version-4.1.0-7d5edd?style=shield&logo=https://modmail-docs.netlify.app/favicon.png">
-  </a>
-  <a href="https://discord.gg/cnUpwrnpYb">
-    <img src="https://img.shields.io/discord/1079074933008781362.svg?label=Discord&logo=Discord&colorB=7289da&style=shield" alt="Support">
-  </a>
-  <a href="https://ko-fi.com/raidensakura">
-    <img src="https://img.shields.io/badge/kofi-donate-gold.svg?style=shield&logo=Ko-fi" alt="Ko-fi">
   </a>
   <a href="https://www.python.org/downloads/">
     <img src="https://img.shields.io/badge/Compatible%20With-Python%203.10%20|%203.11-blue.svg?style=shield&logo=Python" alt="Made with Python 3.8">
@@ -20,7 +14,7 @@
   <a href="https://github.com/ambv/black">
     <img src="https://img.shields.io/badge/Code%20Style-Black-black?style=shield">
   </a>
-  <a href="https://github.com/modmail-dev/modmail/blob/master/LICENSE">
+  <a href="https://github.com/khakers/modmail/blob/master/LICENSE">
     <img src="https://img.shields.io/badge/license-agpl-e74c3c.svg?style=shield" alt="AGPL-3.0-or-later">
   </a>
 
@@ -38,7 +32,7 @@
   * Minimum length for members to be in the guild before allowed to contact Modmail (`guild_age`). 
 
 * **Advanced Logging Functionality:**
-  * When you close a thread, Modmail will generate a [log link](https://logs.modmail.dev/example) and post it to your log channel.
+  * When you close a thread, Modmail will generate a log link and post it to your log channel.
   * Native Discord dark-mode feel.
   * Markdown/formatting support.
   * Login via Discord to protect your logs (optional feature).
@@ -54,6 +48,9 @@
 This list is ever-growing thanks to active development and our exceptional contributors. See a full list of documented commands by using the `?help` command.
 
 ## Installation
+
+> [!Important]
+> This has not been updated, you should deploy modmail with docker whenever possible.
 
 This is a general installation guide. Refer to the [documentation](https://modmail-docs.netlify.app) for detailed user guide.
 
@@ -88,7 +85,7 @@ This guide assume you already have Docker or Docker Compose installed.
 
 - Running with docker:
   ```console
-  $ docker run --env-file=.env --name=modmail ghcr.io/raidensakura/modmail:stable
+  $ docker run --env-file=.env --name=modmail ghcr.io/khakers/openmodmail:stable
   ```
 - Running with Docker Compose:
     ```console
@@ -102,16 +99,17 @@ Plugins allow niche features as well as anything else outside of the scope of th
 
 You can find a list of third-party plugins using the `?plugins registry`  command on the bot or by reading through the official [REGISTRY.json](https://github.com/modmail-dev/modmail/blob/master/plugins/registry.json).
 
+> [!NOTE]
+> Modmail has deleted their github wiki
+
 To develop your own, check out the [plugins documentation](https://github.com/modmail-dev/modmail/wiki/Plugins).
 
 Plugins requests and support are available in the [Modmail Support Server](https://discord.gg/cnUpwrnpYb).
 
 ## Support & Issues
 
-Issues with the bot can be opened through [GitHub Issues](https://github.com/raidensakura/modmail/issues/new/choose).
+Issues with the bot can be opened through [GitHub Issues](https://github.com/khakers/openmodmail/issues/new/choose).
 
-Support for this forked version of Modmail can be requested through [Raiden's Discord server](https://dsc.gg/transience).
-As I don't have a dedicated team to answer questions and provide help, it will be be answered when I'm available.
 
 ## Contributing
 
