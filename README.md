@@ -15,13 +15,13 @@
     <img src="https://img.shields.io/badge/kofi-donate-gold.svg?style=shield&logo=Ko-fi" alt="Ko-fi">
   </a>
   <a href="https://www.python.org/downloads/">
-    <img src="https://img.shields.io/badge/Compatible%20With-Python%203.8%20|%203.9%20|%203.10%20|%203.11-blue.svg?style=shield&logo=Python" alt="Made with Python 3.8">
+    <img src="https://img.shields.io/badge/Compatible%20With-Python%203.10%20|%203.11-blue.svg?style=shield&logo=Python" alt="Made with Python 3.8">
   </a>
   <a href="https://github.com/ambv/black">
     <img src="https://img.shields.io/badge/Code%20Style-Black-black?style=shield">
   </a>
   <a href="https://github.com/modmail-dev/modmail/blob/master/LICENSE">
-    <img src="https://img.shields.io/badge/license-agpl-e74c3c.svg?style=shield" alt="MIT License">
+    <img src="https://img.shields.io/badge/license-agpl-e74c3c.svg?style=shield" alt="AGPL-3.0-or-later">
   </a>
 
 <img src='https://github.com/raidensakura/modmail/assets/38610216/106e8fa3-6f8e-4b00-9968-f5c2f3108da0' align='center' width=500>
@@ -67,17 +67,20 @@ This guide assumes you have git, and a supported Python version installed and ad
 2. Create a Discord bot account, grant the necessary intents, and invite the bot.
 3. Create a free MongoDB database.
 4. Rename the file `.env.example` to `.env` and fill it with appropriate values
-5. Update pip, install pipenv, and install dependencies using pipenv
+5. Update pip
     ```console
     $ pip install -U pip
-    $ pip install pipenv
-    $ pipenv install
+   ```
+6. [Install PDM](https://pdm.fming.dev/latest/#recommended-installation-method)
+7. Install dependencies using PDM
+   ```console
+    $ pdm sync
     ```
-6. Start the bot
+8. Start the bot
     ```console
-    $ pipenv run bot
+    $ pdm run bot
     ```
-7. Load the logviewer plugin included with Modmail with `?plugin load @local/logviewer`
+9. Load the logviewer plugin included with Modmail with `?plugin load @local/logviewer`
 
 ### Running the Docker Image
 
@@ -118,14 +121,15 @@ The [develop](https://github.com/raidensakura/modmail/tree/develop) branch is wh
 
 This project has included pre-commit script that automatically runs black and ruff linter on every commit.
 
-1. Install development dependencies inside pipenv
+1. Install development dependencies inside pdm
     ```console
-    $ pipenv install --dev
+    $ pdm sync -d
     ```
 2. Install the pre-commit hook
     ```console
-    $ pre-commit install
+    $ pdm install --plugins
     ```
+   The pre-commit hook should be automatically installed
     
 Alternatively, you can also lint the codebase manually
 
