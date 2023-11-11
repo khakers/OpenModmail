@@ -1231,8 +1231,12 @@ class ModmailBot(commands.Bot):
                     or self.config.get("anon_reply_without_command")
                     or self.config.get("plain_reply_without_command")
                 ):
+                    # Check to see if the message starts with the ignore prefix
                     if not message.content.startswith(self.config.get("ignore_prefix")):
                         await thread.reply(message, anonymous=anonymous, plain=plain)
+                    else:
+                        logger.debug("Message ignored because it started with the ignore_prefix.")
+                        await self.api.append_log(message, type_="internal")
                 else:
                     await self.api.append_log(message, type_="internal")
             elif ctx.invoked_with:
