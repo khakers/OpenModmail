@@ -1,8 +1,8 @@
 services:
   bot:
-    image: ghcr.io/raidensakura/modmail:stable
-    container_name: modmail
-    restart: always
+    build:
+        context: .
+        dockerfile: Dockerfile
     env_file:
       - .env
     environment:
@@ -10,11 +10,12 @@ services:
     depends_on:
       - mongo
   mongo:
-    image: mongo
-    container_name: mongodb:7
+    image: mongo:7
     restart: always
     volumes:
       - mongodb:/data/db
+    ports:
+      - 127.0.0.1:27017:27017
 
 volumes:
   mongodb:
