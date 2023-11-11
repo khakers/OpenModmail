@@ -21,6 +21,20 @@
 <img src='https://github.com/raidensakura/modmail/assets/38610216/106e8fa3-6f8e-4b00-9968-f5c2f3108da0' align='center' width=500>
 </div>
 
+> [!NOTE]
+> This is a maintained *hard* fork of modmail by khakers based on [raidensakura](https://github.com/raidensakura)'s fork
+> of modmail.
+> This fork is not affiliated with the original modmail project.
+> It was done to add features that were not being added to the original modmail project due to its inactivity and to
+> better align with what I wanted for modmail-viewer
+
+I am the developer of [modmail-viewer](https://github.com/khakers/modmail-viewer), which is the recommended way to view
+logs for this fork.
+Although you can use the built-in logviewer plugin, it is not recommended as it is not as feature-rich as
+modmail-viewer, and I do not intend to maintain it.
+The logviewer plugin is included with this fork, but it is disabled by default, and it contains extras features and
+security fixes that are not present in the original logviewer plugin.
+
 ## Features
 
 * **Highly Customisable:**
@@ -45,7 +59,6 @@
   * Support for the diverse range of message contents (multiple images, files).
   * Paginated commands interfaces via reactions.
 
-This list is ever-growing thanks to active development and our exceptional contributors. See a full list of documented commands by using the `?help` command.
 
 ## Installation
 
@@ -58,7 +71,7 @@ This guide assumes you have git, and a supported Python version installed and ad
 
 1. Clone the repository
     ```console
-    $ git clone https://github.com/raidensakura/modmail
+    $ git clone https://github.com/khakers/openmodmail
     $ cd modmail
     ```
 2. Create a Discord bot account, grant the necessary intents, and invite the bot.
@@ -113,9 +126,9 @@ Issues with the bot can be opened through [GitHub Issues](https://github.com/kha
 
 ## Contributing
 
-Check out the [contributing guidelines](https://github.com/raidensakura/modmail/blob/stable/.github/CONTRIBUTING.md) before you get started.
+Check out the [contributing guidelines](https://github.com/khakers/modmail/blob/stable/.github/CONTRIBUTING.md) before you get started.
 
-The [develop](https://github.com/raidensakura/modmail/tree/develop) branch is where most of the features are tested before stable release.
+The [develop](https://github.com/khakers/openmodmail/tree/develop) branch is where most of the features are tested before stable release.
 
 This project has included pre-commit script that automatically runs black and ruff linter on every commit.
 
