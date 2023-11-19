@@ -81,6 +81,7 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Fixed blocked roles improperly saving in `blocked_users` config.
 - Fixed `?block` command improperly parsing reason as timestamp. 
 - Rate limit issue when fetch the messages due to reaction linking. ([PR #3306](https://github.com/modmail-dev/Modmail/pull/3306))
+- Update command fails when the plugin is invalid. ([PR #3295](https://github.com/modmail-dev/Modmail/pull/3295))
 
 ### Internal
 - `ConfigManager.get` no longer accepts two positional arguments: the `convert` argument is now keyword-only.
