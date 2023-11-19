@@ -22,11 +22,12 @@
 </div>
 
 > [!NOTE]
-> This is a maintained *hard* fork of modmail by khakers based on [raidensakura](https://github.com/raidensakura)'s fork
+> This is a semi-maintained *hard* fork of modmail by khakers based on [raidensakura](https://github.com/raidensakura)'s fork
 > of modmail.
 > This fork is not affiliated with the original modmail project.
 > It was done to add features that were not being added to the original modmail project due to its inactivity and to
 > better align with what I wanted for modmail-viewer
+> You probably shouldn't use this, but if you for some reason do, it does have some extra features, fixes, and bugs.
 
 I am the developer of [modmail-viewer](https://github.com/khakers/modmail-viewer), which is the recommended way to view
 logs for this fork.
