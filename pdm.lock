@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["cross_platform"]
 lock_version = "4.4"
-content_hash = "sha256:ffeb9846c4232212a58419ea70f4bbdb7eeedfc91100dc1b4aa24d1aeac5a367"
+content_hash = "sha256:f6464f4a9939ed5ae7c811ef263b859067f0783053e26362fdb94f09da0fb5a1"
 
 [[package]]
 name = "aiohttp"
@@ -259,15 +259,15 @@ files = [
 
 [[package]]
 name = "discord-py"
-version = "2.3.0"
+version = "2.3.2"
 requires_python = ">=3.8.0"
 summary = "A Python wrapper for the Discord API"
 dependencies = [
     "aiohttp<4,>=3.7.4",
 ]
 files = [
-    {file = "discord.py-2.3.0-py3-none-any.whl", hash = "sha256:3e9498967822ad4499f8f72deb9173f942d9827d92b6e4e4e7732d24f78f300c"},
-    {file = "discord.py-2.3.0.tar.gz", hash = "sha256:c71066a30f037d069218e59092505c3e8945fd175e396a80748056d989756806"},
+    {file = "discord.py-2.3.2-py3-none-any.whl", hash = "sha256:9da4679fc3cb10c64b388284700dc998663e0e57328283bbfcfc2525ec5960a6"},
+    {file = "discord.py-2.3.2.tar.gz", hash = "sha256:4560f70f2eddba7e83370ecebd237ac09fbb4980dc66507482b0c0e5b8f76b9c"},
 ]
 
 [[package]]
