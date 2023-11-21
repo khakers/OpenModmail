@@ -22,7 +22,7 @@ from discord.ext import commands, tasks
 from discord.ext.commands import MemberConverter
 from discord.ext.commands.view import StringView
 from emoji import UNICODE_EMOJI
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from core.blocklist import Blocklist, BlockReason
 
@@ -190,7 +190,7 @@ class ModmailBot(commands.Bot):
 
     @property
     def version(self):
-        return parse_version(__version__)
+        return Version(__version__)
 
     @property
     def api(self) -> ApiClient:
@@ -1588,7 +1588,7 @@ class ModmailBot(commands.Bot):
         changelog = await Changelog.from_url(self)
         latest = changelog.latest_version
 
-        if self.version < parse_version(latest.version):
+        if self.version < Version(latest.version):
             error = None
             data = {}
             try:
