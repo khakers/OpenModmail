@@ -7,19 +7,28 @@ RUN apk update && apk add git \
 FROM base as python-deps
 
 RUN apk add --virtual build-deps build-base gcc libffi-dev
-COPY requirements.txt /
-RUN pip install --prefix=/inst -U -r /requirements.txt
+
+#Install pdm
+RUN pip install -U pip setuptools wheel
+RUN pip install pdm
+
+COPY  pyproject.toml pdm.lock README.md /modmail/
+
+WORKDIR /modmail
+RUN pdm sync --prod --no-editable --fail-fast
 
 FROM base as runtime
 
-ENV USING_DOCKER yes
-COPY --from=python-deps /inst /usr/local
+RUN adduser --disabled-password modmail
+USER modmail
 
-COPY . /modmail
+
+ENV USING_DOCKER yes
+COPY --chown=modmail:modmail --from=python-deps /modmail /modmail
+
+COPY --chown=modmail:modmail . /modmail
 WORKDIR /modmail
 
+ENV PATH="/modmail/.venv/bin:${PATH}"
 CMD ["python", "bot.py"]
 
-RUN adduser --disabled-password --gecos '' app && \
-    chown -R app /modmail
-USER app
