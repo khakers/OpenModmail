@@ -1755,16 +1755,6 @@ def main():
     except ImportError:
         pass
 
-    # check discord version
-    discord_version = "2.3.0"
-    if discord.__version__ != discord_version:
-        logger.error(
-            "Dependencies are not updated, run pipenv install. discord.py version expected %s, received %s",
-            discord_version,
-            discord.__version__,
-        )
-        sys.exit(0)
-
     # Set up discord.py internal logging
     if os.environ.get("LOG_DISCORD"):
         logger.debug(f"Discord logging enabled: {os.environ['LOG_DISCORD'].upper()}")
