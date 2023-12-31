@@ -5,7 +5,6 @@
 !/cogs
 !/core
 !/plugins
-!/src
 !*.py
 !LICENSE
 !pdm.lock
