@@ -24,6 +24,8 @@ from discord.ext.commands.view import StringView
 from emoji import UNICODE_EMOJI
 from pkg_resources import parse_version
 
+from core.attachments.AttachmentHandler import IAttachmentHandler
+from core.attachments.MongoAttachmentClient import MongoAttachmentHandler
 from core.blocklist import Blocklist, BlockReason
 
 try:
@@ -91,6 +93,9 @@ class ModmailBot(commands.Bot):
         self.plugin_db = PluginDatabaseClient(self)  # Deprecated
 
         self.blocklist = Blocklist(bot=self)
+
+        # TODO handle in database image store option
+        self.attachment_handler: IAttachmentHandler = MongoAttachmentHandler(self.api.db)
 
         self.startup()
 

@@ -76,6 +76,7 @@ dependencies = [
     "strenum",
     "discord-py~=2.3.0",
     "setuptools>=69.0.3",
+    "typing-extensions>=4.6.3",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -92,6 +93,7 @@ requirements = "pdm export -o requirements.txt --without-hashes"
 # OR
 # $ pdm bot
 bot = "bot.py"
+check = "pdm run ruff check ."
 
 # Manually sync with pdm sync-pre-commit
 [tool.sync-pre-commit-lock]

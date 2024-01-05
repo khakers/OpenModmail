@@ -7,7 +7,7 @@ import discord
 from aiohttp import ClientResponse, ClientResponseError
 from discord import DMChannel, Member, Message, TextChannel
 from discord.ext import commands
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.errors import ConfigurationError
 from pymongo.uri_parser import parse_uri
 
@@ -299,7 +299,7 @@ class ApiClient:
 
     def __init__(self, bot, db):
         self.bot = bot
-        self.db = db
+        self.db: AsyncIOMotorDatabase = db
         self.session = bot.session
 
     async def request(
@@ -452,7 +452,7 @@ class MongoDBClient(ApiClient):
 
         try:
             database = parse_uri(mongo_uri).get("database") or "modmail_bot"
-            db = AsyncIOMotorClient(mongo_uri)[database]
+            db: AsyncIOMotorDatabase = AsyncIOMotorClient(mongo_uri)[database]
         except ConfigurationError as e:
             logger.critical(
                 "Your MongoDB CONNECTION_URI might be copied wrong, try re-copying from the source again. "
@@ -645,58 +645,6 @@ class MongoDBClient(ApiClient):
             {"$set": {"messages.$.content": new_content, "messages.$.edited": True}},
         )
 
-    async def _handle_attachments(self, message: Message) -> list:
-        attachments = []
-        in_db_storage = self.bot.config.get("use_in_database_image_store")
-        # 8 MB to bytes
-        image_max_size = 1024 * 1024 * 8
-
-        if in_db_storage:
-            for attachment in message.attachments:
-                # TODO this is non ideal
-                # ideally we would async iterate over the attachments so we don't block on io for every attachment
-                image_data = await attachment.read()
-                # Don't store images larger than
-                if len(image_data) > image_max_size:
-                    logger.warning(
-                        "Attachment %s (%s) is too large to store in the database, skipping.",
-                        attachment.filename,
-                        attachment.id,
-                    )
-                    continue
-                attachments.append(
-                    {
-                        "id": attachment.id,
-                        "filename": attachment.filename,
-                        "is_image": attachment.content_type.startswith("image/"),
-                        "size": len(image_data),
-                        "type": "internal",
-                        # URL points to the original discord URL
-                        "url": attachment.url,
-                        # Attachment data is the raw bytes of the image
-                        "attachment_data": image_data,
-                        "content_type": attachment.content_type,
-                        "width": attachment.width,
-                        "height": attachment.height,
-                    }
-                )
-        else:
-            for attachment in message.attachments:
-                attachments.append(
-                    {
-                        "id": attachment.id,
-                        "filename": attachment.filename,
-                        "is_image": attachment.content_type.startswith("image/"),
-                        "size": attachment.size,
-                        "url": attachment.url,
-                        "content_type": attachment.content_type,
-                        "width": attachment.width,
-                        "height": attachment.height,
-                    }
-                )
-
-        return attachments
-
     async def append_log(
         self,
         message: Message,
@@ -720,7 +668,7 @@ class MongoDBClient(ApiClient):
             },
             "content": message.content,
             "type": type_,
-            "attachments": await self._handle_attachments(message),
+            "attachments": await self.bot.attachment_handler.upload_attachments(message),
         }
 
         return await self.logs.find_one_and_update(
