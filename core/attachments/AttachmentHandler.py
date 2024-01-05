@@ -5,7 +5,7 @@ from discord.message import Message
 
 class IAttachmentHandler(ABC):
     @abstractmethod
-    async def upload_attachments(self, message: Message) -> dict:
+    async def upload_attachments(self, message: Message) -> list[dict]:
         """
         Uploads all attachments from a message to the database
         Parameters
