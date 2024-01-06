@@ -179,7 +179,12 @@ class ConfigManager:
         "log_level": "INFO",
         # data collection
         "data_collection": True,
-        "use_in_database_image_store": True,
+        "attachment_datastore": "internal",
+        "s3_endpoint": None,
+        "s3_access_key": None,
+        "s3_secret_key": None,
+        "s3_region": None,
+        "s3_bucket": "modmail-attachments",
     }
 
     colors = {"mod_color", "recipient_color", "main_color", "error_color"}
@@ -225,7 +230,6 @@ class ConfigManager:
         "use_hoisted_top_role",
         "enable_presence_intent",
         "registry_plugins_only",
-        "use_in_database_image_store",
     }
 
     enums = {

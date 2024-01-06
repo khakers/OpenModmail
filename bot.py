@@ -26,6 +26,7 @@ from pkg_resources import parse_version
 
 from core.attachments.AttachmentHandler import IAttachmentHandler
 from core.attachments.MongoAttachmentClient import MongoAttachmentHandler
+from core.attachments.S3AttachmentClient import S3AttachmentHandler
 from core.blocklist import Blocklist, BlockReason
 
 try:
@@ -94,8 +95,24 @@ class ModmailBot(commands.Bot):
 
         self.blocklist = Blocklist(bot=self)
 
-        # TODO handle in database image store option
-        self.attachment_handler: IAttachmentHandler = MongoAttachmentHandler(self.api.db)
+        if self.config["attachment_datastore"] == "internal":
+            logger.info("Using internal attachment handler.")
+            self.attachment_handler: IAttachmentHandler = MongoAttachmentHandler(self.api.db)
+        elif self.config["attachment_datastore"] == "s3":
+            logger.info("Using S3 attachment handler.")
+            endpoint = self.config["s3_endpoint"]
+            if endpoint is None:
+                logger.critical("S3 endpoint must be set when using the S3 attachment datastore.")
+                raise InvalidConfigError("s3_endpoint must be set.")
+            self.attachment_handler: IAttachmentHandler = S3AttachmentHandler(
+                endpoint=endpoint,
+                access_key=self.config["s3_access_key"] or None,
+                secret_key=self.config["s3_secret_key"] or None,
+                region=self.config["s3_region"] or None,
+                bucket=self.config["s3_bucket"] or None,
+            )
+        else:
+            raise InvalidConfigError("Invalid image_store option set.")
 
         self.startup()
 
