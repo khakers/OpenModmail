@@ -82,9 +82,3 @@ class S3AttachmentHandler(IAttachmentHandler):
             )
 
         return attachments
-
-    async def download_attachment(self, attachment_id: int) -> dict:
-        pass
-
-    async def delete_attachment(self, attachment_id: int) -> dict:
-        pass

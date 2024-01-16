@@ -92,12 +92,6 @@ class MongoAttachmentHandler(IAttachmentHandler):
 
         return attachments
 
-    def download_attachment(self, attachment_id: int) -> dict:
-        pass
-
-    def delete_attachment(self, attachment_id: int) -> dict:
-        pass
-
     def set_max_size(self, size: int) -> None:
         """
         Set the maximum size of an image that can be stored in the database.
