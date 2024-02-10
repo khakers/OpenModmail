@@ -35,7 +35,3 @@ class IAttachmentHandler(ABC):
         Set the maximum size of an attachment in bytes
         """
         self._attachment_max_size = value
-
-    @abstractmethod
-    async def delete_attachment(self, attachment_id: int) -> dict:
-        pass
