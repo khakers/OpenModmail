@@ -25,6 +25,7 @@ from emoji import UNICODE_EMOJI
 from pkg_resources import parse_version
 
 from core.attachments.AttachmentHandler import IAttachmentHandler
+from core.attachments.errors import AttachmentSizeException
 from core.attachments.MongoAttachmentClient import MongoAttachmentHandler
 from core.attachments.S3AttachmentClient import S3AttachmentHandler
 from core.blocklist import Blocklist, BlockReason
@@ -113,6 +114,7 @@ class ModmailBot(commands.Bot):
             )
         else:
             raise InvalidConfigError("Invalid image_store option set.")
+        self.attachment_handler.max_size = self.config["max_attachment_size"]
 
         self.startup()
 
@@ -983,11 +985,22 @@ class ModmailBot(commands.Bot):
                 )
                 logger.info("A message was blocked from %s due to disabled Modmail.", message.author)
                 await self.add_reaction(message, blocked_emoji)
-                return await message.channel.send(embed=embed)
+                await message.channel.send(embed=embed)
+                return
 
         if not thread.cancelled:
             try:
                 await thread.send(message)
+            except AttachmentSizeException as e:
+                await self.add_reaction(message, blocked_emoji)
+                await message.channel.send(
+                    embed=discord.Embed(
+                        title="Attachment too large",
+                        description=str(e),
+                        color=self.error_color,
+                    )
+                )
+                return
             except Exception:
                 logger.error("Failed to send message:", exc_info=True)
                 await self.add_reaction(message, blocked_emoji)

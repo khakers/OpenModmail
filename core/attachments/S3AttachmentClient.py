@@ -53,9 +53,18 @@ class S3AttachmentHandler(IAttachmentHandler):
             A list of dictionaries containing information about the uploaded attachments.
         """
         attachments = []
+
+        # Setup metadata for S3 object
         tags = Tags.new_object_tags()
         tags["message_id"] = str(message.id)
         tags["channel_id"] = str(message.channel.id)
+        # tags["bot_id"] = str(bot.bot_id)
+        for attachment in message.attachments:
+            if attachment.size > self.max_size:
+                raise ValueError(
+                    f"Attachment {attachment.filename} is too large. Max size is {self.max_size} bytes."
+                )
+
         for attachment in message.attachments:
             result = self.client.put_object(
                 self.bucket,

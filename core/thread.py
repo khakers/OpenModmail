@@ -12,6 +12,7 @@ import isodate
 from discord.ext.commands import CommandError, MissingRequiredArgument
 from discord.types.user import PartialUser as PartialUserPayload, User as UserPayload
 
+from core.attachments.errors import AttachmentSizeException
 from core.models import DMDisabled, DummyMessage, getLogger
 from core.utils import (
     AcceptButton,
@@ -869,6 +870,8 @@ class Thread:
                     "messages from friends, or the bot was "
                     "blocked by the recipient."
                 )
+            elif isinstance(e, AttachmentSizeException):
+                description = e
             else:
                 description = (
                     "Your message could not be delivered due "
@@ -939,6 +942,14 @@ class Thread:
                     )
                 )
             )
+
+        for attachment in message.attachments:
+            if attachment.size > self.bot.attachment_handler.max_size:
+                raise AttachmentSizeException(
+                    attachment.size,
+                    self.bot.attachment_handler.max_size,
+                    f"An attachment was above the maximum allowed size of {self.bot.attachment_handler.max_size} bytes.",
+                )
 
         if not self.ready:
             await self.wait_until_ready()

@@ -1226,5 +1226,14 @@
             "This configuration can only be set through `.env` file or environment (config) variables.",
             "This is only functional if `attachment_datastore` is set to `s3`."
         ]
+    },
+    "max_attachment_size": {
+        "default": "64*1024*1014",
+        "description": "The maximum size of an attachment in bytes.",
+        "examples": [],
+        "notes": [
+            "Messages will fail to send if they have an attachment over this size.",
+            "Depending on your attachment handler, the actual maximum size may be lower than this."
+        ]
     }
 }

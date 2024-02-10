@@ -1,12 +1,13 @@
 import asyncio
 import datetime
-from typing import Any
+from typing import Any, Final
 
 from discord.message import Attachment, Message
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo.results import InsertOneResult
 
 from core.attachments.AttachmentHandler import IAttachmentHandler
+from core.attachments.errors import AttachmentSizeException
 from core.models import getLogger
 
 
@@ -40,12 +41,23 @@ class MongoAttachmentHandler(IAttachmentHandler):
     logger = getLogger(__name__)
 
     # 8 MB to bytes
-    image_max_size = 1024 * 1024 * 8
+    MONGODB_MAX_SIZE: Final[int] = 1024 * 1024 * 15
 
     def __init__(self, database: AsyncIOMotorDatabase) -> None:
         self.client = database
         self.attachment_collection: AsyncIOMotorCollection = database["attachments"]
+        self._attachment_max_size = self.MONGODB_MAX_SIZE
         # self.log_collection: AsyncIOMotorCollection = database["logs"]
+
+    @IAttachmentHandler.max_size.setter
+    def max_size(self, size: int) -> None:
+        if size > self.MONGODB_MAX_SIZE:
+            self.logger.warning(
+                f"MongoDB attachment storage has a maximum attachment size of {self.MONGODB_MAX_SIZE} bytes. "
+                f"The max attachment size will be set to this value.."
+            )
+            return
+        self._attachment_max_size = size
 
     async def _store_attachments_bulk(self, attachments: list[Attachment]) -> Any:
         attachment_data = await asyncio.gather(*[attachment.read() for attachment in attachments])
@@ -71,6 +83,14 @@ class MongoAttachmentHandler(IAttachmentHandler):
     ) -> list[dict]:
         attachments = []
 
+        for attachment in message.attachments:
+            if attachment.size > self.max_size:
+                self.logger.warning(
+                    "Attachment %s is too large to be stored in the database. It will not be uploaded...",
+                    attachment.filename,
+                )
+                raise AttachmentSizeException("Attachment too large")
+
         if len(message.attachments) > 1:
             await self._store_attachments_bulk(message.attachments)
         else:
@@ -91,12 +111,3 @@ class MongoAttachmentHandler(IAttachmentHandler):
             )
 
         return attachments
-
-    def set_max_size(self, size: int) -> None:
-        """
-        Set the maximum size of an image that can be stored in the database.
-        Parameters
-        ----------
-        size
-        """
-        self.image_max_size = size
