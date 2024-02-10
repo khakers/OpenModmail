@@ -5,7 +5,7 @@ from discord import Message
 from minio import Minio
 from minio.commonconfig import Tags
 
-from core.attachments.AttachmentHandler import IAttachmentHandler
+from core.attachments.attachment_handler import IAttachmentHandler
 
 
 class S3AttachmentHandler(IAttachmentHandler):
@@ -28,6 +28,8 @@ class S3AttachmentHandler(IAttachmentHandler):
             The secret key for the S3 bucket.
         endpoint : str
             The endpoint for the S3 bucket.
+        region : str | None
+            The region for the S3 bucket.
         """
         self.bucket = bucket
         self.region = region

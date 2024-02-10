@@ -6,7 +6,7 @@ from discord.message import Attachment, Message
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo.results import InsertOneResult
 
-from core.attachments.AttachmentHandler import IAttachmentHandler
+from core.attachments.attachment_handler import IAttachmentHandler
 from core.attachments.errors import AttachmentSizeException
 from core.models import getLogger
 

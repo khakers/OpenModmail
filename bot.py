@@ -24,10 +24,10 @@ from discord.ext.commands.view import StringView
 from emoji import UNICODE_EMOJI
 from pkg_resources import parse_version
 
-from core.attachments.AttachmentHandler import IAttachmentHandler
+from core.attachments.attachment_handler import IAttachmentHandler
 from core.attachments.errors import AttachmentSizeException
-from core.attachments.MongoAttachmentClient import MongoAttachmentHandler
-from core.attachments.S3AttachmentClient import S3AttachmentHandler
+from core.attachments.mongo_attachment_client import MongoAttachmentHandler
+from core.attachments.s3_attachment_client import S3AttachmentHandler
 from core.blocklist import Blocklist, BlockReason
 
 try:
