@@ -39,7 +39,7 @@ class ConfigManager:
         "reply_without_command": False,
         "anon_reply_without_command": False,
         "plain_reply_without_command": False,
-        "max_attachment_size": 64 * 1024 * 1024,
+        "max_attachment_size": None,
         # logging
         "log_channel_id": None,
         "mention_channel_id": None,

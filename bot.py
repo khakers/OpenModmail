@@ -114,7 +114,8 @@ class ModmailBot(commands.Bot):
             )
         else:
             raise InvalidConfigError("Invalid image_store option set.")
-        self.attachment_handler.max_size = self.config["max_attachment_size"]
+        if self.config["max_attachment_size"] is not None:
+            self.attachment_handler.max_size = self.config["max_attachment_size"]
 
         self.startup()
 

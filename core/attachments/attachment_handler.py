@@ -4,7 +4,7 @@ from discord.message import Message
 
 
 class IAttachmentHandler(ABC):
-    _attachment_max_size: int = 1024 * 1024 * 25
+    _attachment_max_size: int = 1024 * 1024 * 500
 
     @abstractmethod
     async def upload_attachments(self, message: Message) -> list[dict]:

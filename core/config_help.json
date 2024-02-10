@@ -1228,12 +1228,13 @@
         ]
     },
     "max_attachment_size": {
-        "default": "64*1024*1014",
+        "default": "None",
         "description": "The maximum size of an attachment in bytes.",
         "examples": [],
         "notes": [
             "Messages will fail to send if they have an attachment over this size.",
-            "Depending on your attachment handler, the actual maximum size may be lower than this."
+            "Depending on your attachment handler, the actual maximum size may be lower than this.",
+            "Requires a restart to take effect."
         ]
     }
 }
