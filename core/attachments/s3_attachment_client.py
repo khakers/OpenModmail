@@ -6,9 +6,12 @@ from minio import Minio
 from minio.commonconfig import Tags
 
 from core.attachments.attachment_handler import IAttachmentHandler
+from core.models import getLogger
 
 
 class S3AttachmentHandler(IAttachmentHandler):
+    logger = getLogger(__name__)
+
     def __init__(
         self,
         endpoint: str,
@@ -30,6 +33,8 @@ class S3AttachmentHandler(IAttachmentHandler):
             The endpoint for the S3 bucket.
         region : str | None
             The region for the S3 bucket.
+        bucket : str | None
+            The name of the S3 bucket.
         """
         self.bucket = bucket
         self.region = region
@@ -37,6 +42,13 @@ class S3AttachmentHandler(IAttachmentHandler):
         self.client = Minio(
             endpoint, access_key=access_key, secret_key=secret_key, secure=False, region=region
         )
+
+        try:
+            self.client.bucket_exists(self.bucket)
+        except Exception as e:
+            self.logger.error(f"An error occurred while checking if the s3 bucket exists: {e}", exc_info=True)
+            raise
+
         if not self.client.bucket_exists(self.bucket):
             self.client.make_bucket(self.bucket)
 
@@ -68,6 +80,7 @@ class S3AttachmentHandler(IAttachmentHandler):
                 )
 
         for attachment in message.attachments:
+            self.logger.debug("Uploading attachment %s to S3", attachment.filename)
             result = self.client.put_object(
                 self.bucket,
                 str(attachment.id),
