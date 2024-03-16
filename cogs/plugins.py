@@ -134,8 +134,14 @@ class Plugins(commands.Cog):
         async with self.bot.session.get(url) as resp:
             self.registry = json.loads(await resp.text())
 
-    async def initial_load_plugins(self):
-        for plugin_name in list(self.bot.config["plugins"]):
+    def _get_forced_plugins(self) -> list[str]:
+        env_list = os.getenv("FORCED_PLUGINS")
+        if env_list is None:
+            return []
+        plugins = env_list.split(",")
+        
+
+    async def _init_load_plugin(plugin_name: str):
             try:
                 plugin = Plugin.from_string(plugin_name, strict=True)
             except InvalidPluginError:
@@ -162,6 +168,18 @@ class Plugins(commands.Cog):
                 )
                 continue
 
+    
+    async def initial_load_plugins(self):
+        self.forced_plugins = _get_forced_plugins()
+        logger.debug("loading forced plugins")
+        for plugin_name in self.forced_plugins
+            _init_plugin_load(plugin_name)
+            
+        logger.debug("loading config plugins")
+        
+        for plugin_name in list(self.bot.config["plugins"]):
+            _init_plugin_load(plugin_name)
+            
         logger.debug("Finished loading all plugins.")
 
         self.bot.dispatch("plugins_ready")
@@ -427,6 +445,10 @@ class Plugins(commands.Cog):
         """
         plugin = await self.parse_user_input(ctx, plugin_name)
         if plugin is None:
+            return
+
+        if str(plugin) in self.forced_plugins:
+            await ctx.send(embed=discord.Embed(description="This plugin cannot be removed. Contact your admin for more information.", color=self.bot.error_color))
             return
 
         if str(plugin) not in self.bot.config["plugins"]:
