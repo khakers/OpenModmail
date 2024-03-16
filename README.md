@@ -31,10 +31,6 @@
 
 I am the developer of [modmail-viewer](https://github.com/khakers/modmail-viewer), which is the recommended way to view
 logs for this fork.
-Although you can use the built-in logviewer plugin, it is not recommended as it is not as feature-rich as
-modmail-viewer, and I do not intend to maintain it.
-The logviewer plugin is included with this fork, but it is disabled by default, and it contains extras features and
-security fixes that are not present in the original logviewer plugin.
 
 ## Features
 
@@ -91,7 +87,6 @@ This guide assumes you have git, and a supported Python version installed and ad
     ```console
     $ pdm run bot
     ```
-9. Load the logviewer plugin included with Modmail with `?plugin load @local/logviewer`
 
 ### Running the Docker Image
 
