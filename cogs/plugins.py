@@ -176,9 +176,14 @@ class Plugins(commands.Cog):
             logger.debug(f"loading forced plugin {plugin_name}")
             await self._init_load_plugin(plugin_name)
 
-        logger.debug("loading config plugins")
+        user_plugins = list(self.bot.config["plugins"])
+        logger.debug(f"loading {len(user_plugins)} config plugins")
 
-        for plugin_name in list(self.bot.config["plugins"]):
+        for plugin_name in user_plugins:
+            # Skip loading this plugin if it is in the force load list and thus already loaded
+            if plugin_name in self.forced_plugins:
+                logger.debug(f"Skipped loading user plugin {plugin_name} because it is forced installed.")
+                continue
             await self._init_load_plugin(plugin_name)
 
         logger.debug("Finished loading all plugins.")
