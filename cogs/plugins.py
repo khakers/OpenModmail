@@ -117,6 +117,7 @@ class Plugins(commands.Cog):
     """
 
     def __init__(self, bot):
+        self.forced_plugins: list[str] = []
         self.bot = bot
         self.registry = {}
         self.loaded_plugins = set()
@@ -139,47 +140,47 @@ class Plugins(commands.Cog):
         if env_list is None:
             return []
         plugins = env_list.split(",")
-        
+        return plugins
 
-    async def _init_load_plugin(plugin_name: str):
+    async def _init_load_plugin(self, plugin_name: str):
+        try:
+            # Strict seems to only affect whether specifying the branch is required
+            plugin = Plugin.from_string(plugin_name, strict=False)
+        except InvalidPluginError:
+            self.bot.config["plugins"].remove(plugin_name)
             try:
-                plugin = Plugin.from_string(plugin_name, strict=True)
+                # For backwards compat
+                plugin = Plugin.from_string(plugin_name)
             except InvalidPluginError:
-                self.bot.config["plugins"].remove(plugin_name)
-                try:
-                    # For backwards compat
-                    plugin = Plugin.from_string(plugin_name)
-                except InvalidPluginError:
-                    logger.error("Failed to parse plugin name: %s.", plugin_name, exc_info=True)
-                    continue
+                logger.error("Failed to parse plugin name: %s.", plugin_name, exc_info=True)
+                return
 
-                logger.info("Migrated legacy plugin name: %s, now %s.", plugin_name, str(plugin))
-                self.bot.config["plugins"].append(str(plugin))
+            logger.info("Migrated legacy plugin name: %s, now %s.", plugin_name, str(plugin))
+            self.bot.config["plugins"].append(str(plugin))
 
-            try:
-                await self.download_plugin(plugin)
-                await self.load_plugin(plugin)
-            except Exception:
-                self.bot.config["plugins"].remove(plugin_name)
-                logger.error(
-                    "Error when loading plugin %s. Plugin removed from config.",
-                    plugin,
-                    exc_info=True,
-                )
-                continue
+        try:
+            await self.download_plugin(plugin)
+            await self.load_plugin(plugin)
+        except Exception:
+            self.bot.config["plugins"].remove(plugin_name)
+            logger.error(
+                "Error when loading plugin %s. Plugin removed from config.",
+                plugin,
+                exc_info=True,
+            )
 
-    
     async def initial_load_plugins(self):
-        self.forced_plugins = _get_forced_plugins()
-        logger.debug("loading forced plugins")
-        for plugin_name in self.forced_plugins
-            _init_plugin_load(plugin_name)
-            
+        self.forced_plugins = self._get_forced_plugins()
+        logger.debug(f"loading {len(self.forced_plugins)} forced plugins")
+        for plugin_name in self.forced_plugins:
+            logger.debug(f"loading forced plugin {plugin_name}")
+            await self._init_load_plugin(plugin_name)
+
         logger.debug("loading config plugins")
-        
+
         for plugin_name in list(self.bot.config["plugins"]):
-            _init_plugin_load(plugin_name)
-            
+            await self._init_load_plugin(plugin_name)
+
         logger.debug("Finished loading all plugins.")
 
         self.bot.dispatch("plugins_ready")
@@ -448,7 +449,12 @@ class Plugins(commands.Cog):
             return
 
         if str(plugin) in self.forced_plugins:
-            await ctx.send(embed=discord.Embed(description="This plugin cannot be removed. Contact your admin for more information.", color=self.bot.error_color))
+            await ctx.send(
+                embed=discord.Embed(
+                    description="This plugin cannot be removed. Contact your admin for more information.",
+                    color=self.bot.error_color,
+                )
+            )
             return
 
         if str(plugin) not in self.bot.config["plugins"]:
