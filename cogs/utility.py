@@ -1951,6 +1951,16 @@ class Utility(commands.Cog):
         To stay up-to-date with the latest commit from GitHub, specify "force" as the flag.
         """
 
+        if self.bot.hosting_method == HostingMethod.DOCKER:
+            await ctx.send(
+                embed=discord.Embed(
+                    title="Error",
+                    description="This command is not supported on Docker.",
+                    color=self.bot.error_color,
+                )
+            )
+            return
+
         changelog = await Changelog.from_url(self.bot)
         latest = changelog.latest_version
 
