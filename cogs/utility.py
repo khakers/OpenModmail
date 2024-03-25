@@ -311,13 +311,13 @@ class Utility(commands.Cog):
     @commands.command(aliases=["info"])
     @checks.has_permissions(PermissionLevel.REGULAR)
     @utils.trigger_typing
-    async def about(self, ctx):
+    async def about(self, ctx: commands.Context):
         """Shows information about this bot."""
         embed = discord.Embed(color=self.bot.main_color, timestamp=discord.utils.utcnow())
         embed.set_author(
-            name="Modmail - About",
+            name="OpenModmail - About",
             icon_url=self.bot.user.display_avatar.url,
-            url="https://discord.gg/F34cRU8",
+            # url="https://discord.gg/F34cRU8",
         )
         embed.set_thumbnail(url=self.bot.user.display_avatar.url)
 
@@ -344,9 +344,9 @@ class Utility(commands.Cog):
         embed.add_field(name="Python Version", value=f"`{python_version}`")
         embed.add_field(name="discord.py Version", value=f"`{dpy_version}`")
         embed.add_field(name="Bot Version", value=f"`{self.bot.version}`")
-        _c_url = "https://github.com/modmail-dev/modmail/graphs/contributors"
+        _c_url = "https://github.com/khakers/openmodmail/graphs/contributors"
         _c = f"[and many other contributors]({_c_url})"
-        embed.add_field(name="Authors", value=f"`kyb3r`, `Taki`, `fourjr`, {_c}")
+        embed.add_field(name="Authors", value=f"`kyb3r`, `Taki`, `fourjr`, `khakers`, `raiden_sakura` {_c}")
         embed.add_field(name="Hosting Method", value=self.bot.hosting_method.name)
 
         changelog = await Changelog.from_url(self.bot)
@@ -359,27 +359,6 @@ class Utility(commands.Cog):
             footer = f"A newer version is available v{latest.version}."
         else:
             footer = "You are up to date with the latest version."
-
-        embed.add_field(
-            name="Want Modmail in Your Server?",
-            value="Follow the installation guide on [GitHub](https://github.com/modmail-dev/modmail/) "
-            "and join our [Discord server](https://discord.gg/zmdYe3ZVHG)!",
-            inline=False,
-        )
-
-        embed.add_field(
-            name="Support the Developers",
-            value="This bot is completely free for everyone. We rely on kind individuals "
-            "like you to support us on [`Patreon`](https://patreon.com/kyber) (perks included) "
-            "to keep this bot free forever!",
-            inline=False,
-        )
-
-        embed.add_field(
-            name="Project Sponsors",
-            value=f"Checkout the people who supported Modmail with command `{self.bot.prefix}sponsors`!",
-            inline=False,
-        )
 
         embed.set_footer(text=footer)
         await ctx.send(embed=embed)
