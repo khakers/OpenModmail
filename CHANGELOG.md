@@ -32,6 +32,7 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 ### Fixed
 - Persistent notes have been fixed after the previous discord.py update.
 - `is_image` now is true only if the image is actually an image.
+- Fix contact command reporting user was blocked when they weren't.
 
 ### Internal
 - Add `update_title` and `update_nsfw` methods to `ApiClient` to update thread title and nsfw status in the database.
