@@ -4,10 +4,8 @@
 **
 !/cogs
 !/core
-!/plugins
-!*.py
+!bot.py
 !LICENSE
 !pdm.lock
 !pyproject.toml
 !README.md
-
