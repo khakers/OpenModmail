@@ -2,7 +2,6 @@ import asyncio
 import re
 from datetime import timezone
 from itertools import zip_longest
-from types import SimpleNamespace
 from typing import List, Literal, Optional, Tuple, Union
 
 import discord
@@ -1166,7 +1165,7 @@ class Modmail(commands.Cog):
         if not user:
             thread = ctx.thread
             if not thread:
-                raise commands.MissingRequiredArgument(SimpleNamespace(name="member"))
+                raise commands.MissingRequiredArgument(DummyParam("user"))
             user = thread.recipient or await self.bot.get_or_fetch_user(thread.id)
 
         default_avatar = "https://cdn.discordapp.com/embed/avatars/0.png"
@@ -1208,6 +1207,28 @@ class Modmail(commands.Cog):
                 description="No log entries have been found for that query.",
             )
             return await ctx.send(embed=embed)
+
+        session = EmbedPaginatorSession(ctx, *embeds)
+        await session.run()
+
+    @logs.command(name="key", aliases=["id"])
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    async def logs_key(self, ctx, key: str):
+        """
+        Get the log link for the specified log key.
+        """
+        icon_url = ctx.author.avatar.url
+
+        logs = await self.bot.api.find_log_entry(key)
+
+        if not logs:
+            embed = discord.Embed(
+                color=self.bot.error_color,
+                description=f"Log entry `{key}` not found.",
+            )
+            return await ctx.send(embed=embed)
+
+        embeds = self.format_log_embeds(logs, avatar_url=icon_url)
 
         session = EmbedPaginatorSession(ctx, *embeds)
         await session.run()
@@ -1564,7 +1585,7 @@ class Modmail(commands.Cog):
             elif u.bot:
                 errors.append(f"{u} is a bot, cannot add to thread.")
                 users.remove(u)
-            elif await self.bot.blocklist.is_user_blocked(u):
+            elif (await self.bot.blocklist.is_user_blocked(u))[0]:
                 ref = f"{u.mention} is" if ctx.author != u else "You are"
                 errors.append(f"{ref} currently blocked from contacting {self.bot.user.name}.")
                 users.remove(u)
@@ -1802,7 +1823,7 @@ class Modmail(commands.Cog):
         user_or_role = ctx.thread.recipient if (ctx.thread and not user_or_role) else user_or_role
 
         if not user_or_role:
-            raise commands.MissingRequiredArgument(SimpleNamespace(name="user"))
+            raise commands.MissingRequiredArgument(DummyParam("user"))
 
         mention = getattr(user_or_role, "mention", f"`{user_or_role.id}`")
 
@@ -1862,7 +1883,7 @@ class Modmail(commands.Cog):
         user_or_role = ctx.thread.recipient if (ctx.thread and not user_or_role) else user_or_role
 
         if not user_or_role:
-            raise commands.MissingRequiredArgument(SimpleNamespace(name="user"))
+            raise commands.MissingRequiredArgument(DummyParam("user or role"))
 
         mention = getattr(user_or_role, "mention", f"`{user_or_role.id}`")
 
