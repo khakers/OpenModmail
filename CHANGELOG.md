@@ -16,6 +16,7 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 
 ### Added
 - Added `content_type` to attachments stored in the database.
+- Add Forced plugins. Allows auto installing un-removable plugins via `FORCED_PLUGINS` environment variable contain a comma separate list of plugins. (GH#5)
 
 ### Changed
 - Changing a threads title or NSFW status immediately updates the status in the database.
