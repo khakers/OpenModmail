@@ -17,6 +17,8 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 
 ### Added
 - Added `content_type` to attachments stored in the database.
+- `?log key <key>` to retrieve the log link and view a preview using a log key. ([PR #3196](https://github.com/modmail-dev/Modmail/pull/3196))
+
 
 ### Changed
 - Changing a threads title or NSFW status immediately updates the status in the database.
@@ -33,6 +35,7 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Persistent notes have been fixed after the previous discord.py update.
 - `is_image` now is true only if the image is actually an image.
 - Fix contact command reporting user was blocked when they weren't.
+- Cleanup imports after removing/unloading a plugin. ([PR #3226](https://github.com/modmail-dev/Modmail/pull/3226))
 
 ### Internal
 - Add `update_title` and `update_nsfw` methods to `ApiClient` to update thread title and nsfw status in the database.
@@ -52,6 +55,7 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Support for trailing space in `?prefix` command, example: `?prefix "mm "` for `mm ping`.
 - Added logviewer as built-in local plugin `?plugin load @local/logviewer`.
 - `?plugin uninstall` is now an alias for `?plugin remove` ([GH #3260](https://github.com/modmail-dev/modmail/issues/3260))
+- `DISCORD_LOG_LEVEL` environment variable to set the log level of discord.py. ([PR #3216](https://github.com/modmail-dev/Modmail/pull/3216))
 
 ### Changed
 - Guild icons in embed footers and author urls now have a fixed size of 128. ([PR #3261](https://github.com/modmail-dev/modmail/pull/3261))
@@ -76,9 +80,14 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Fixed uncached member issue in large guild for react_to_contact and ticket creation.
 - Fixed blocked roles improperly saving in `blocked_users` config.
 - Fixed `?block` command improperly parsing reason as timestamp. 
+- Rate limit issue when fetch the messages due to reaction linking. ([PR #3306](https://github.com/modmail-dev/Modmail/pull/3306))
+- Update command fails when the plugin is invalid. ([PR #3295](https://github.com/modmail-dev/Modmail/pull/3295))
 
 ### Internal
 - `ConfigManager.get` no longer accepts two positional arguments: the `convert` argument is now keyword-only.
+
+### Internal
+- Renamed `Bot.log_file_name` to `Bot.log_file_path`. Log files are now created at `temp/logs/modmail.log`. ([PR #3216](https://github.com/modmail-dev/Modmail/pull/3216))
 
 # v4.0.2
 

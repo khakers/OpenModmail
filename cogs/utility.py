@@ -11,21 +11,21 @@ from itertools import takewhile, zip_longest
 from json import JSONDecodeError
 from subprocess import PIPE
 from textwrap import indent
-from types import SimpleNamespace
 from typing import Union
 
 import discord
-from aiohttp import ClientResponseError
 from discord.enums import ActivityType, Status
 from discord.ext import commands, tasks
 from discord.ext.commands.view import StringView
-from pkg_resources import parse_version
+
+from aiohttp import ClientResponseError
+from packaging.version import Version
 
 from core import checks, migrations, utils
 from core.changelog import Changelog
 from core.models import HostingMethod, InvalidConfigError, PermissionLevel, UnseenFormatter, getLogger
 from core.paginator import EmbedPaginatorSession, MessagePaginatorSession
-from core.utils import trigger_typing, truncate
+from core.utils import trigger_typing, truncate, DummyParam
 
 logger = getLogger(__name__)
 
@@ -352,9 +352,9 @@ class Utility(commands.Cog):
         latest = changelog.latest_version
 
         if self.bot.version.is_prerelease:
-            stable = next(filter(lambda v: not parse_version(v.version).is_prerelease, changelog.versions))
+            stable = next(filter(lambda v: not Version(v.version).is_prerelease, changelog.versions))
             footer = f"You are on the prerelease version • the latest version is v{stable.version}."
-        elif self.bot.version < parse_version(latest.version):
+        elif self.bot.version < Version(latest.version):
             footer = f"A newer version is available v{latest.version}."
         else:
             footer = "You are up to date with the latest version."
@@ -368,13 +368,7 @@ class Utility(commands.Cog):
     async def debug(self, ctx):
         """Shows the recent application logs of the bot."""
 
-        log_file_name = self.bot.token.split(".")[0]
-
-        with open(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), f"../temp/{log_file_name}.log"),
-            "r+",
-            encoding="utf-8",
-        ) as f:
+        with open(self.bot.log_file_path, "r+", encoding="utf-8") as f:
             logs = f.read().strip()
 
         if not logs:
@@ -383,7 +377,7 @@ class Utility(commands.Cog):
                 title="Debug Logs:",
                 description="You don't have any logs at the moment.",
             )
-            embed.set_footer(text="Go to Heroku to see your logs.")
+            embed.set_footer(text="Go to your console to see your logs.")
             return await ctx.send(embed=embed)
 
         messages = []
@@ -400,7 +394,7 @@ class Utility(commands.Cog):
                     msg = "```Haskell\n"
             msg += line
             if len(msg) + 3 > 2000:
-                msg = msg[:1993] + "[...]```"
+                msg = msg[:1992] + "[...]```"
                 messages.append(msg)
                 msg = "```Haskell\n"
 
@@ -422,12 +416,8 @@ class Utility(commands.Cog):
         """Posts application-logs to Hastebin."""
 
         haste_url = os.environ.get("HASTE_URL", "https://hastebin.cc")
-        log_file_name = self.bot.token.split(".")[0]
 
-        with open(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), f"../temp/{log_file_name}.log"),
-            "rb+",
-        ) as f:
+        with open(self.bot.log_file_path, "rb+") as f:
             logs = BytesIO(f.read().strip())
 
         try:
@@ -449,7 +439,7 @@ class Utility(commands.Cog):
                 color=self.bot.main_color,
                 description="Something's wrong. We're unable to upload your logs to hastebin.",
             )
-            embed.set_footer(text="Go to Heroku to see your logs.")
+            embed.set_footer(text="Go to your console to see your logs.")
         await ctx.send(embed=embed)
 
     @debug.command(name="clear", aliases=["wipe"])
@@ -458,12 +448,7 @@ class Utility(commands.Cog):
     async def debug_clear(self, ctx):
         """Clears the locally cached logs."""
 
-        log_file_name = self.bot.token.split(".")[0]
-
-        with open(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), f"../temp/{log_file_name}.log"),
-            "w",
-        ):
+        with open(self.bot.log_file_path, "w"):
             pass
         await ctx.send(
             embed=discord.Embed(color=self.bot.main_color, description="Cached logs are now cleared.")
@@ -504,12 +489,12 @@ class Utility(commands.Cog):
             return await ctx.send(embed=embed)
 
         if not message:
-            raise commands.MissingRequiredArgument(SimpleNamespace(name="message"))
+            raise commands.MissingRequiredArgument(DummyParam("message"))
 
         try:
             activity_type = ActivityType[activity_type]
         except KeyError:
-            raise commands.MissingRequiredArgument(SimpleNamespace(name="activity"))
+            raise commands.MissingRequiredArgument(DummyParam("activity"))
 
         activity, _ = await self.set_presence(activity_type=activity_type, activity_message=message)
 
@@ -554,7 +539,7 @@ class Utility(commands.Cog):
         try:
             status = Status[status_type]
         except KeyError:
-            raise commands.MissingRequiredArgument(SimpleNamespace(name="status"))
+            raise commands.MissingRequiredArgument(DummyParam("status"))
 
         _, status = await self.set_presence(status=status)
 
@@ -1969,7 +1954,7 @@ class Utility(commands.Cog):
             "(https://github.com/raidensakura/modmail/blob/stable/bot.py#L1)"
         )
 
-        if self.bot.version >= parse_version(latest.version) and flag.lower() != "force":
+        if self.bot.version >= Version(latest.version) and flag.lower() != "force":
             embed = discord.Embed(title="Already up to date", description=desc, color=self.bot.main_color)
 
             data = await self.bot.api.get_user_info()

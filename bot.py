@@ -22,7 +22,7 @@ from discord.ext import commands, tasks
 from discord.ext.commands import MemberConverter
 from discord.ext.commands.view import StringView
 from emoji import UNICODE_EMOJI
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from core.blocklist import Blocklist, BlockReason
 
@@ -49,10 +49,9 @@ from core.models import (
 )
 from core.thread import ThreadManager
 from core.time import human_timedelta
-from core.utils import normalize_alias, parse_alias, truncate, tryint
+from core.utils import human_join, normalize_alias, parse_alias, truncate, tryint
 
 logger = getLogger(__name__)
-
 
 temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp")
 if not os.path.exists(temp_dir):
@@ -85,8 +84,11 @@ class ModmailBot(commands.Bot):
 
         self.threads = ThreadManager(self)
 
-        self.log_file_name = os.path.join(temp_dir, f"{self.token.split('.')[0]}.log")
-        self._configure_logging()
+        log_dir = os.path.join(temp_dir, "logs")
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
+        self.log_file_path = os.path.join(log_dir, "modmail.log")
+        configure_logging(self)
 
         self.plugin_db = PluginDatabaseClient(self)  # Deprecated
 
@@ -186,32 +188,9 @@ class ModmailBot(commands.Bot):
                 logger.exception("Failed to load %s.", cog)
         logger.line("debug")
 
-    def _configure_logging(self):
-        level_text = self.config["log_level"].upper()
-        logging_levels = {
-            "CRITICAL": logging.CRITICAL,
-            "ERROR": logging.ERROR,
-            "WARNING": logging.WARNING,
-            "INFO": logging.INFO,
-            "DEBUG": logging.DEBUG,
-        }
-        logger.line()
-
-        log_level = logging_levels.get(level_text)
-        if log_level is None:
-            log_level = self.config.remove("log_level")
-            logger.warning("Invalid logging level set: %s.", level_text)
-            logger.warning("Using default logging level: INFO.")
-        else:
-            logger.info("Logging level: %s", level_text)
-
-        logger.info("Log file: %s", self.log_file_name)
-        configure_logging(self.log_file_name, log_level)
-        logger.debug("Successfully configured logging.")
-
     @property
     def version(self):
-        return parse_version(__version__)
+        return Version(__version__)
 
     @property
     def api(self) -> ApiClient:
@@ -1268,25 +1247,36 @@ class ModmailBot(commands.Bot):
             return
 
         channel = self.get_channel(payload.channel_id)
-        if not channel:  # dm channel not in internal cache
-            _thread = await self.threads.find(recipient=user)
-            if not _thread:
+        thread = None
+        # dm channel not in internal cache
+        if not channel:
+            thread = await self.threads.find(recipient=user)
+            if not thread:
                 return
-            channel = await _thread.recipient.create_dm()
+            channel = await thread.recipient.create_dm()
+            if channel.id != payload.channel_id:
+                return
 
+        from_dm = isinstance(channel, discord.DMChannel)
+        from_txt = isinstance(channel, discord.TextChannel)
+        if not from_dm and not from_txt:
+            return
+
+        if not thread:
+            params = {"recipient": user} if from_dm else {"channel": channel}
+            thread = await self.threads.find(**params)
+            if not thread:
+                return
+
+        # thread must exist before doing this API call
         try:
             message = await channel.fetch_message(payload.message_id)
         except (discord.NotFound, discord.Forbidden):
             return
 
         reaction = payload.emoji
-
         close_emoji = await self.convert_emoji(self.config["close_emoji"])
-
-        if isinstance(channel, discord.DMChannel):
-            thread = await self.threads.find(recipient=user)
-            if not thread:
-                return
+        if from_dm:
             if (
                 payload.event_type == "REACTION_ADD"
                 and message.embeds
@@ -1294,7 +1284,7 @@ class ModmailBot(commands.Bot):
                 and self.config.get("recipient_thread_close")
             ):
                 ts = message.embeds[0].timestamp
-                if thread and ts == thread.channel.created_at:
+                if ts == thread.channel.created_at:
                     # the reacted message is the corresponding thread creation embed
                     # closing thread
                     return await thread.close(closer=user)
@@ -1314,11 +1304,10 @@ class ModmailBot(commands.Bot):
                 logger.warning("Failed to find linked message for reactions: %s", e)
                 return
         else:
-            thread = await self.threads.find(channel=channel)
-            if not thread:
-                return
             try:
-                _, *linked_messages = await thread.find_linked_messages(message.id, either_direction=True)
+                _, *linked_messages = await thread.find_linked_messages(
+                    message1=message, either_direction=True
+                )
             except ValueError as e:
                 logger.warning("Failed to find linked message for reactions: %s", e)
                 return
@@ -1428,28 +1417,44 @@ class ModmailBot(commands.Bot):
             await thread.close(closer=mod, silent=True, delete_channel=False)
 
     async def on_member_remove(self, member):
-        if member.guild != self.guild:
-            return
         thread = await self.threads.find(recipient=member)
         if thread:
-            if self.config["close_on_leave"]:
+            if member.guild == self.guild and self.config["close_on_leave"]:
                 await thread.close(
                     closer=member.guild.me,
                     message=self.config["close_on_leave_reason"],
                     silent=True,
                 )
             else:
-                embed = discord.Embed(
-                    description=self.config["close_on_leave_reason"], color=self.error_color
-                )
+                if len(self.guilds) > 1:
+                    guild_left = member.guild
+                    remaining_guilds = member.mutual_guilds
+
+                    if remaining_guilds:
+                        remaining_guild_names = [guild.name for guild in remaining_guilds]
+                        leave_message = (
+                            f"The recipient has left {guild_left}. "
+                            f"They are still in {human_join(remaining_guild_names, final='and')}."
+                        )
+                    else:
+                        leave_message = (
+                            f"The recipient has left {guild_left}. We no longer share any mutual servers."
+                        )
+                else:
+                    leave_message = "The recipient has left the server."
+
+                embed = discord.Embed(description=leave_message, color=self.error_color)
                 await thread.channel.send(embed=embed)
 
     async def on_member_join(self, member):
-        if member.guild != self.guild:
-            return
         thread = await self.threads.find(recipient=member)
         if thread:
-            embed = discord.Embed(description="The recipient has joined the server.", color=self.mod_color)
+            if len(self.guilds) > 1:
+                guild_joined = member.guild
+                join_message = f"The recipient has joined {guild_joined}."
+            else:
+                join_message = "The recipient has joined the server."
+            embed = discord.Embed(description=join_message, color=self.mod_color)
             await thread.channel.send(embed=embed)
 
     async def on_message_delete(self, message):
@@ -1583,7 +1588,7 @@ class ModmailBot(commands.Bot):
         changelog = await Changelog.from_url(self)
         latest = changelog.latest_version
 
-        if self.version < parse_version(latest.version):
+        if self.version < Version(latest.version):
             error = None
             data = {}
             try:
@@ -1754,16 +1759,6 @@ def main():
         uvloop.install()
     except ImportError:
         pass
-
-    # Set up discord.py internal logging
-    if os.environ.get("LOG_DISCORD"):
-        logger.debug(f"Discord logging enabled: {os.environ['LOG_DISCORD'].upper()}")
-        d_logger = logging.getLogger("discord")
-
-        d_logger.setLevel(os.environ["LOG_DISCORD"].upper())
-        handler = logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w")
-        handler.setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s"))
-        d_logger.addHandler(handler)
 
     bot = ModmailBot()
     bot.run()
