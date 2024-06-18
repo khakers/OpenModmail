@@ -1170,5 +1170,71 @@
             "If this configuration is enabled, only roles that are hoisted (displayed seperately in member list) will be used. If a user has no hoisted roles, it will return 'None'.",
             "If you would like to display the top role of a user regardless of if it's hoisted or not, disable `use_hoisted_top_role`."
         ]
+    },
+    "attachment_datastore": {
+        "default": "internal",
+        "description": "Controls how images are stored.",
+        "examples": [],
+        "notes": [
+            "Can be set to `internal` or `s3`.",
+            "If set to `s3`, you must also supply `s3_endpoint` along with authentication credentials.",
+            "If set to `internal`, images will be stored within Mongo.",
+            "This configuration can only be set through `.env` file or environment (config) variables."
+        ]
+    },
+    "s3_endpoint": {
+        "default": "None",
+        "description": "The endpoint for your S3 bucket.",
+        "examples": [],
+        "notes": [
+            "This configuration can only be set through `.env` file or environment (config) variables.",
+            "This is only required if `attachment_datastore` is set to `s3`."
+        ]
+    },
+    "s3_access_key": {
+        "default": "None",
+        "description": "The access key for your S3 bucket.",
+        "examples": [],
+        "notes": [
+            "This configuration can only be set through `.env` file or environment (config) variables.",
+            "This is only required if `attachment_datastore` is set to `s3`."
+        ]
+    },
+    "s3_secret_key": {
+        "default": "None",
+        "description": "The secret key for your S3 bucket.",
+        "examples": [],
+        "notes": [
+            "This configuration can only be set through `.env` file or environment (config) variables.",
+            "This is only required if `attachment_datastore` is set to `s3`."
+        ]
+    },
+    "s3_bucket": {
+        "default": "modmail-attachments",
+        "description": "The bucket name for your S3 bucket.",
+        "examples": [],
+        "notes": [
+            "This configuration can only be set through `.env` file or environment (config) variables.",
+            "This is only functional if `attachment_datastore` is set to `s3`."
+        ]
+    },
+    "s3_region": {
+        "default": "None",
+        "description": "The region for your S3 bucket.",
+        "examples": [],
+        "notes": [
+            "This configuration can only be set through `.env` file or environment (config) variables.",
+            "This is only functional if `attachment_datastore` is set to `s3`."
+        ]
+    },
+    "max_attachment_size": {
+        "default": "None",
+        "description": "The maximum size of an attachment in bytes.",
+        "examples": [],
+        "notes": [
+            "Messages will fail to send if they have an attachment over this size.",
+            "Depending on your attachment handler, the actual maximum size may be lower than this.",
+            "Requires a restart to take effect."
+        ]
     }
 }

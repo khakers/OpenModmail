@@ -7,7 +7,7 @@ import discord
 from aiohttp import ClientResponse, ClientResponseError
 from discord import DMChannel, Member, Message, TextChannel
 from discord.ext import commands
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.errors import ConfigurationError
 from pymongo.uri_parser import parse_uri
 
@@ -299,7 +299,7 @@ class ApiClient:
 
     def __init__(self, bot, db):
         self.bot = bot
-        self.db = db
+        self.db: AsyncIOMotorDatabase = db
         self.session = bot.session
 
     async def request(
@@ -452,7 +452,7 @@ class MongoDBClient(ApiClient):
 
         try:
             database = parse_uri(mongo_uri).get("database") or "modmail_bot"
-            db = AsyncIOMotorClient(mongo_uri)[database]
+            db: AsyncIOMotorDatabase = AsyncIOMotorClient(mongo_uri)[database]
         except ConfigurationError as e:
             logger.critical(
                 "Your MongoDB CONNECTION_URI might be copied wrong, try re-copying from the source again. "
@@ -668,18 +668,7 @@ class MongoDBClient(ApiClient):
             },
             "content": message.content,
             "type": type_,
-            "attachments": [
-                {
-                    "id": a.id,
-                    "filename": a.filename,
-                    # In previous versions this was true for both videos and images
-                    "is_image": a.content_type.startswith("image/"),
-                    "size": a.size,
-                    "url": a.url,
-                    "content_type": a.content_type,
-                }
-                for a in message.attachments
-            ],
+            "attachments": await self.bot.attachment_handler.upload_attachments(message),
         }
 
         return await self.logs.find_one_and_update(

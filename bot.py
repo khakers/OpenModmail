@@ -24,6 +24,10 @@ from discord.ext.commands.view import StringView
 from emoji import UNICODE_EMOJI
 from pkg_resources import parse_version
 
+from core.attachments.attachment_handler import IAttachmentHandler
+from core.attachments.errors import AttachmentSizeException
+from core.attachments.mongo_attachment_client import MongoAttachmentHandler
+from core.attachments.s3_attachment_client import S3AttachmentHandler
 from core.blocklist import Blocklist, BlockReason
 
 try:
@@ -91,6 +95,27 @@ class ModmailBot(commands.Bot):
         self.plugin_db = PluginDatabaseClient(self)  # Deprecated
 
         self.blocklist = Blocklist(bot=self)
+
+        if self.config["attachment_datastore"] == "internal":
+            logger.info("Using internal attachment handler.")
+            self.attachment_handler: IAttachmentHandler = MongoAttachmentHandler(self.api.db)
+        elif self.config["attachment_datastore"] == "s3":
+            logger.info("Using S3 attachment handler.")
+            endpoint = self.config["s3_endpoint"]
+            if endpoint is None:
+                logger.critical("S3 endpoint must be set when using the S3 attachment datastore.")
+                raise InvalidConfigError("s3_endpoint must be set.")
+            self.attachment_handler: IAttachmentHandler = S3AttachmentHandler(
+                endpoint=endpoint,
+                access_key=self.config["s3_access_key"] or None,
+                secret_key=self.config["s3_secret_key"] or None,
+                region=self.config["s3_region"] or None,
+                bucket=self.config["s3_bucket"] or None,
+            )
+        else:
+            raise InvalidConfigError("Invalid image_store option set.")
+        if self.config["max_attachment_size"] is not None:
+            self.attachment_handler.max_size = self.config["max_attachment_size"]
 
         self.startup()
 
@@ -961,11 +986,22 @@ class ModmailBot(commands.Bot):
                 )
                 logger.info("A message was blocked from %s due to disabled Modmail.", message.author)
                 await self.add_reaction(message, blocked_emoji)
-                return await message.channel.send(embed=embed)
+                await message.channel.send(embed=embed)
+                return
 
         if not thread.cancelled:
             try:
                 await thread.send(message)
+            except AttachmentSizeException as e:
+                await self.add_reaction(message, blocked_emoji)
+                await message.channel.send(
+                    embed=discord.Embed(
+                        title="Attachment too large",
+                        description=str(e),
+                        color=self.error_color,
+                    )
+                )
+                return
             except Exception:
                 logger.error("Failed to send message:", exc_info=True)
                 await self.add_reaction(message, blocked_emoji)

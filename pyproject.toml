@@ -56,7 +56,7 @@ name = "Discord-OpenModmail"
 version = "4.2.0"
 description = "Fork² of a feature rich Discord Modmail bot written in Python."
 authors = [
-    {name = "", email = ""},
+    { name = "", email = "" },
 ]
 dependencies = [
     "aiohttp~=3.8.1",
@@ -76,10 +76,12 @@ dependencies = [
     "strenum",
     "discord-py~=2.3.0",
     "setuptools>=69.0.3",
+    "typing-extensions>=4.6.3",
+    "minio~=7.2.3",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
-license = {text = "AGPL-3.0-or-later"}
+license = { text = "AGPL-3.0-or-later" }
 
 [build-system]
 requires = ["pdm-backend"]
@@ -92,6 +94,7 @@ requirements = "pdm export -o requirements.txt --without-hashes"
 # OR
 # $ pdm bot
 bot = "bot.py"
+check = "pdm run ruff check ."
 
 # Manually sync with pdm sync-pre-commit
 [tool.sync-pre-commit-lock]

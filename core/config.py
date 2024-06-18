@@ -39,6 +39,7 @@ class ConfigManager:
         "reply_without_command": False,
         "anon_reply_without_command": False,
         "plain_reply_without_command": False,
+        "max_attachment_size": None,
         # logging
         "log_channel_id": None,
         "mention_channel_id": None,
@@ -179,6 +180,12 @@ class ConfigManager:
         "log_level": "INFO",
         # data collection
         "data_collection": True,
+        "attachment_datastore": "internal",
+        "s3_endpoint": None,
+        "s3_access_key": None,
+        "s3_secret_key": None,
+        "s3_region": None,
+        "s3_bucket": "modmail-attachments",
     }
 
     colors = {"mod_color", "recipient_color", "main_color", "error_color"}
