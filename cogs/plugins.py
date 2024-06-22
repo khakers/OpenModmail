@@ -208,51 +208,56 @@ class Plugins(commands.Cog):
         if plugin.local:
             raise InvalidPluginError(f"Local plugin {plugin} not found!")
 
-        plugin.abs_path.mkdir(parents=True, exist_ok=True)
+        try:
+            plugin.abs_path.mkdir(parents=True, exist_ok=True)
 
-        if plugin.cache_path.exists() and not force:
-            plugin_io = plugin.cache_path.open("rb")
-            logger.debug("Loading cached %s.", plugin.cache_path)
-        else:
-            headers = {}
-            github_token = self.bot.config["github_token"]
-            if github_token is not None:
-                headers["Authorization"] = f"token {github_token}"
+            if plugin.cache_path.exists() and not force:
+                plugin_io = plugin.cache_path.open("rb")
+                logger.debug("Loading cached %s.", plugin.cache_path)
+            else:
+                headers = {}
+                github_token = self.bot.config["github_token"]
+                if github_token is not None:
+                    headers["Authorization"] = f"token {github_token}"
 
-            async with self.bot.session.get(plugin.url, headers=headers) as resp:
-                logger.debug("Downloading %s.", plugin.url)
-                raw = await resp.read()
+                async with self.bot.session.get(plugin.url, headers=headers) as resp:
+                    logger.debug("Downloading %s.", plugin.url)
+                    raw = await resp.read()
 
-                try:
-                    raw = await resp.text()
-                except UnicodeDecodeError:
-                    pass
-                else:
-                    if raw == "Not Found":
-                        raise InvalidPluginError("Plugin not found")
+                    try:
+                        raw = await resp.text()
+                    except UnicodeDecodeError:
+                        pass
                     else:
-                        raise InvalidPluginError("Invalid download received, non-bytes object")
+                        if raw == "Not Found":
+                            raise InvalidPluginError("Plugin not found")
+                        else:
+                            raise InvalidPluginError("Invalid download received, non-bytes object")
 
-            plugin_io = io.BytesIO(raw)
-            if not plugin.cache_path.parent.exists():
-                plugin.cache_path.parent.mkdir(parents=True)
+                plugin_io = io.BytesIO(raw)
+                if not plugin.cache_path.parent.exists():
+                    plugin.cache_path.parent.mkdir(parents=True)
 
-            with plugin.cache_path.open("wb") as f:
-                f.write(raw)
+                with plugin.cache_path.open("wb") as f:
+                    f.write(raw)
 
-        with zipfile.ZipFile(plugin_io) as zipf:
-            for info in zipf.infolist():
-                path = PurePath(info.filename)
-                if len(path.parts) >= 3 and path.parts[1] == plugin.name:
-                    plugin_path = plugin.abs_path / Path(*path.parts[2:])
-                    if info.is_dir():
-                        plugin_path.mkdir(parents=True, exist_ok=True)
-                    else:
-                        plugin_path.parent.mkdir(parents=True, exist_ok=True)
-                        with zipf.open(info) as src, plugin_path.open("wb") as dst:
-                            shutil.copyfileobj(src, dst)
-
-        plugin_io.close()
+            with zipfile.ZipFile(plugin_io) as zipf:
+                for info in zipf.infolist():
+                    path = PurePath(info.filename)
+                    if len(path.parts) >= 3 and path.parts[1] == plugin.name:
+                        plugin_path = plugin.abs_path / Path(*path.parts[2:])
+                        if info.is_dir():
+                            plugin_path.mkdir(parents=True, exist_ok=True)
+                        else:
+                            plugin_path.parent.mkdir(parents=True, exist_ok=True)
+                            with zipf.open(info) as src, plugin_path.open("wb") as dst:
+                                shutil.copyfileobj(src, dst)
+            plugin_io.close()
+        except Exception as e:
+            # Avoid deleting anything if for some reason we're resolving this path to outside the plugins directory
+            plugin.abs_path.resolve().relative_to(Path("plugins").resolve())
+            plugin.abs_path.resolve().rmdir()
+            raise e
 
     async def load_plugin(self, plugin):
         if not (plugin.abs_path / f"{plugin.name}.py").exists():
