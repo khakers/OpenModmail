@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import typing
+import urllib.parse
 import zipfile
 from difflib import get_close_matches
 from importlib import invalidate_caches
@@ -30,13 +31,13 @@ class InvalidPluginError(commands.BadArgument):
 
 
 class Plugin:
-    def __init__(self, user, repo=None, name=None, branch=None):
+    def __init__(self, user, repo=None, name=None, ref=None):
         if repo is None:
             self.user = "@local"
             self.repo = "@local"
             self.name = user
             self.local = True
-            self.branch = "@local"
+            self.ref = "@local"
             self.url = f"@local/{user}"
             self.link = f"@local/{user}"
         else:
@@ -44,15 +45,22 @@ class Plugin:
             self.repo = repo
             self.name = name
             self.local = False
-            self.branch = branch if branch is not None else "stable"
-            self.url = f"https://github.com/{user}/{repo}/archive/{self.branch}.zip"
-            self.link = f"https://github.com/{user}/{repo}/tree/{self.branch}/{name}"
+            self.ref = ref
+            self.url = f"https://api.github.com/repos/{urllib.parse.quote(user)}/{urllib.parse.quote(repo)}/zipball/{urllib.parse.quote(ref) if ref is not None else ''}"
+            self.link = (
+                f"https://github.com/{user}/{repo}/tree{'' if self.ref is None else f'/{self.ref}'}/{name}"
+            )
 
     @property
     def path(self):
         if self.local:
             return PurePath("plugins") / "@local" / self.name
-        return PurePath("plugins") / self.user / self.repo / f"{self.name}-{self.branch}"
+        return (
+            PurePath("plugins")
+            / self.user
+            / self.repo
+            / f"{self.name}{'' if self.ref is None else f'-{self.ref}'}"
+        )
 
     @property
     def abs_path(self):
@@ -66,19 +74,19 @@ class Plugin:
             Path(__file__).absolute().parent.parent
             / "temp"
             / "plugins-cache"
-            / f"{self.user}-{self.repo}-{self.branch}.zip"
+            / f"{self.user}-{self.repo}{'' if self.ref is None else f'-{self.ref}'}.zip"
         )
 
     @property
     def ext_string(self):
         if self.local:
             return f"plugins.@local.{self.name}.{self.name}"
-        return f"plugins.{self.user}.{self.repo}.{self.name}-{self.branch}.{self.name}"
+        return f"plugins.{self.user}.{self.repo}.{self.name}{'' if self.ref is None else f'-{self.ref}'}.{self.name}"
 
     def __str__(self):
         if self.local:
             return f"@local/{self.name}"
-        return f"{self.user}/{self.repo}/{self.name}@{self.branch}"
+        return f"{self.user}/{self.repo}/{self.name}@{self.ref}"
 
     def __lt__(self, other):
         return self.name.lower() < other.name.lower()
@@ -97,7 +105,7 @@ class Plugin:
         raise InvalidPluginError("Cannot decipher %s.", s)  # pylint: disable=raising-format-tuple
 
     def __hash__(self):
-        return hash((self.user, self.repo, self.name, self.branch))
+        return hash((self.user, self.repo, self.name, self.ref))
 
     def __repr__(self):
         return f"<Plugins: {self.__str__()}>"
