@@ -523,7 +523,7 @@ class ModmailBot(commands.Bot):
         await self.wait_for_connected()
 
         if self.guild is None:
-            logger.error("Logging out due to invalid GUILD_ID.")
+            logger.critical(f"Unable to find main guild, no guilds found matching ID '{self.guild_id}', is your GUILD_ID set correctly?")
             return await self.close()
 
         if self._started:
