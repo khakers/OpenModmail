@@ -1898,6 +1898,15 @@ class Utility(commands.Cog):
     async def migrate(self, ctx, migration: str):
         """Perform a given database migration"""
         if migration == "blocklist":
+            if not len(self.bot.config["blocked"]) > 0 and not len(self.bot.config["blocked_roles"]) > 0:
+                await ctx.send(
+                    embed=discord.Embed(title="Error",
+                                        description="No blocked users or roles can be migrated.\n\n "
+                                                    "You don't need to migrated the blocklist as it's "
+                                                    "already been done or there is nothing to migrate.",
+                                        color=self.bot.error_color)
+                )
+                return
             try:
                 await migrations.migrate_blocklist(self.bot)
             except Exception as e:
