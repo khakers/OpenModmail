@@ -39,6 +39,7 @@ class ConfigManager:
         "reply_without_command": False,
         "anon_reply_without_command": False,
         "plain_reply_without_command": False,
+        "ignore_prefix": "\0",
         # logging
         "log_channel_id": None,
         "mention_channel_id": None,
