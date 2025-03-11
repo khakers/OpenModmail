@@ -879,6 +879,8 @@ class Utility(commands.Cog):
                 if name in self.bot.config.public_keys:
                     embed.add_field(name=name, value=f"`{value}`", inline=False)
                     field_count += 1
+            if field_count >= 25:
+                embed.set_footer(text="(truncated)")
 
         return await ctx.send(embed=embed)
 
