@@ -872,9 +872,13 @@ class Utility(commands.Cog):
             embed.set_author(name="Current config(s):", icon_url=self.bot.user.display_avatar.url)
             config = self.bot.config.filter_default(self.bot.config)
 
+            field_count = 0;
             for name, value in config.items():
+                if field_count >= 25:
+                    break
                 if name in self.bot.config.public_keys:
                     embed.add_field(name=name, value=f"`{value}`", inline=False)
+                    field_count += 1
 
         return await ctx.send(embed=embed)
 
