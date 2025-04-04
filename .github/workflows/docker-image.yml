@@ -34,8 +34,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
+      - name: Extract metadata (tags, labels) for Docker main
+        id: docker-meta-base
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -48,16 +48,28 @@ jobs:
             type=sha
             # set latest tag for stable releases
             type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
+          bake-target: openmodmail
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Extract metadata (tags, labels) for Docker supportutils
+        id: docker-meta-supportutils
+        uses: docker/metadata-action@v5
         with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            suffix=supportutils,onlatest=true
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha
+            # set latest tag for stable releases
+            type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
+          bake-target: openmodmail-supportutils
+      - name: Build and push
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          push: ${{ ! startsWith(github.ref, 'refs/pull/') }}
           sbom: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-

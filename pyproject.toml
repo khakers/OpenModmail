@@ -38,19 +38,23 @@ max-complexity = 25
 plugins = [
     "sync-pre-commit-lock"
 ]
+
 [[tool.pdm.source]]
 name = "pypi"
 url = "https://pypi.org/simple"
 verify_ssl = true
 
-[tool.pdm.dev-dependencies]
-dev = [
-    "black",
-    "ruff",
-    "tomli",
-    "typing-extensions==4.6.3",
-    "pre-commit",
-]
+
+[tool.pdm.scripts]
+# $ pdm requirements
+requirements = "pdm export -o requirements.txt --without-hashes"
+# $ pdm run bot
+# OR
+# $ pdm bot
+bot = "bot.py"
+gitDescribe = "git describe --tags --dirty"
+
+# Manually sync with pdm sync-pre-commit
 [project]
 name = "Discord-OpenModmail"
 version = "4.2.0"
@@ -81,20 +85,16 @@ dependencies = [
 requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "AGPL-3.0-or-later"}
+[project.optional-dependencies]
+supportutils = [
+    "utils @ git+https://github.com/Jerrie-Aries/modmail-plugins.git@master#subdirectory=utils",
+]
 
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
-[tool.pdm.scripts]
-# $ pdm requirements
-requirements = "pdm export -o requirements.txt --without-hashes"
-# $ pdm run bot
-# OR
-# $ pdm bot
-bot = "bot.py"
-
-# Manually sync with pdm sync-pre-commit
+[tool]
 [tool.sync-pre-commit-lock]
 # Run `pre-commit install` automatically if applicable
 automaticall-install-hooks = true
@@ -104,3 +104,13 @@ disable-sync-from-lock = false
 ignore = []
 # Name of the pre-commit config file to sync with
 pre-commit-config-file = ".pre-commit-config.yaml"
+
+[dependency-groups]
+dev = [
+    "black",
+    "ruff",
+    "tomli",
+    "typing-extensions==4.6.3",
+    "pre-commit",
+    "utils @ git+https://github.com/Jerrie-Aries/modmail-plugins.git@master#subdirectory=utils",
+]

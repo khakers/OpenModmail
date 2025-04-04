@@ -1,5 +1,6 @@
 services:
   bot:
+    image: ghcr.io/khakers/openmodmail:develop
     build:
         context: .
         dockerfile: Dockerfile
@@ -9,12 +10,6 @@ services:
       - CONNECTION_URI=mongodb://mongo
     depends_on:
       - mongo
-  mongo:
-    image: mongo:7
-    volumes:
-      - mongodb:/data/db
-    ports:
-      - 127.0.0.1:27017:27017
 
 volumes:
   mongodb:
