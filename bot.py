@@ -1,4 +1,4 @@
-__version__ = "4.1.0"
+__version__ = "5.0.0-DEV"
 
 
 import asyncio
@@ -167,9 +167,15 @@ class ModmailBot(commands.Bot):
 
     def startup(self):
         logger.line()
-        logger.info("┌┬┐┌─┐┌┬┐┌┬┐┌─┐┬┬")
-        logger.info("││││ │ │││││├─┤││")
-        logger.info("┴ ┴└─┘─┴┘┴ ┴┴ ┴┴┴─┘")
+        logger.info(
+            """
+  ____                __  ___        __           _ __
+ / __ \___  ___ ___  /  |/  /__  ___/ /_ _  ___ _(_) /
+/ /_/ / _ \/ -_) _ \/ /|_/ / _ \/ _  /  ' \/ _ `/ / / 
+\____/ .__/\__/_//_/_/  /_/\___/\_,_/_/_/_/\_,_/_/_/  
+    /_/                                               
+        """
+        )
         logger.info("v%s", __version__)
         logger.info("Authors: kyb3r, fourjr, Taaku18")
         logger.line()
@@ -523,7 +529,9 @@ class ModmailBot(commands.Bot):
         await self.wait_for_connected()
 
         if self.guild is None:
-            logger.critical(f"Unable to find main guild, no guilds found matching ID '{self.guild_id}', is your GUILD_ID set correctly?")
+            logger.critical(
+                f"Unable to find main guild, no guilds found matching ID '{self.guild_id}', is your GUILD_ID set correctly?"
+            )
             return await self.close()
 
         if self._started:
