@@ -56,7 +56,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |
-            suffix=supportutils,onlatest=true
+            suffix=-supportutils,onlatest=true
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -72,5 +72,11 @@ jobs:
         uses: docker/bake-action@v6
         with:
           push: ${{ ! startsWith(github.ref, 'refs/pull/') }}
+          pull: true
           sbom: true
-          targets: openmodmail,openmodmail-supportutils
+          files: |            
+            ./docker-bake.hcl
+            cwd://${{ steps.docker-meta-base.outputs.bake-file }}
+            cwd://${{ steps.docker-meta-supportutils.outputs.bake-file }}
+
+
