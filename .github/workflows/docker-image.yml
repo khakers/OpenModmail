@@ -78,5 +78,6 @@ jobs:
             ./docker-bake.hcl
             cwd://${{ steps.docker-meta-base.outputs.bake-file }}
             cwd://${{ steps.docker-meta-supportutils.outputs.bake-file }}
+          targets: openmodmail,openmodmail-supportutils
 
 
