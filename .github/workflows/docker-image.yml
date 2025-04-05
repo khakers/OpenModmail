@@ -67,8 +67,9 @@ jobs:
             # set latest tag for stable releases
             type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
           bake-target: openmodmail-supportutils
+          
       - name: Build and push
         uses: docker/bake-action@v6
         with:
           push: ${{ ! startsWith(github.ref, 'refs/pull/') }}
-          sbom: true
+          sbom: false
