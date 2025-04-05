@@ -72,4 +72,5 @@ jobs:
         uses: docker/bake-action@v6
         with:
           push: ${{ ! startsWith(github.ref, 'refs/pull/') }}
-          sbom: false
+          sbom: true
+          targets: openmodmail,openmodmail-supportutils
