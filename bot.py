@@ -639,7 +639,6 @@ class ModmailBot(commands.Bot):
             )
             logger.warning("If the external servers are valid, you may ignore this message.")
 
-        self.autoupdate.start()
         self._started = True
 
     async def convert_emoji(self, name: str) -> str:
