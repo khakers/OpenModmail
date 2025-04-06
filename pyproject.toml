@@ -57,32 +57,36 @@ gitDescribe = "git describe --tags --dirty"
 # Manually sync with pdm sync-pre-commit
 [project]
 name = "Discord-OpenModmail"
-version = "4.2.0"
+version = "5.0.0-alpha"
 description = "Fork² of a feature rich Discord Modmail bot written in Python."
 authors = [
     {name = "", email = ""},
 ]
 dependencies = [
-    "aiohttp~=3.8.1",
+    "aiohttp~=3.11.16",
     "colorama~=0.4.5",
     "emoji~=1.7.0",
     "isodate~=0.6.0",
-    "motor~=3.1.2",
+    # TODO MOTOR is deprecated for PyMongo 4.9+
+    "motor>=3.7.0",
     "natural~=0.2.0",
     "parsedatetime~=2.6",
     "python-dateutil~=2.8.1",
     "python-dotenv~=1.0.0",
-    "uvloop~=0.17.0; sys_platform != \"win32\"",
-    "requests~=2.31.0",
+    "uvloop~=0.21.0; sys_platform != \"win32\"",
+    "requests>=2.32.0",
     "attrs~=23.1.0",
     "cairocffi~=1.3.0",
-    "cffi~=1.15.0",
+    "cffi>=1.17.1",
     "strenum",
     "discord-py~=2.3.0",
+    # required by discord-py for python >= 3.13
+    # Added as dep in discord-py 2.5.2
+    "audioop-lts; python_version >= '3.13'",
     "setuptools>=69.0.3",
     "packaging>=24.1",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "AGPL-3.0-or-later"}
 [project.optional-dependencies]
@@ -99,7 +103,7 @@ build-backend = "pdm.backend"
 # Run `pre-commit install` automatically if applicable
 automaticall-install-hooks = true
 # Should we sync your pre-commit versions with your lockfile (when running lock, add, update, remove, etc.)?
-disable-sync-from-lock = false
+disable-sync-from-lock = true
 # Packages to ignore when syncing from lock
 ignore = []
 # Name of the pre-commit config file to sync with
@@ -112,5 +116,4 @@ dev = [
     "tomli",
     "typing-extensions==4.6.3",
     "pre-commit",
-    "utils @ git+https://github.com/Jerrie-Aries/modmail-plugins.git@master#subdirectory=utils",
 ]

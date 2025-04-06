@@ -7,7 +7,7 @@ from core.models import getLogger
 
 logger = getLogger(__name__)
 
-old_format_matcher = re.compile("by (\w*#\d{1,4})(?: until <t:(\d*):f>)?.")
+old_format_matcher = re.compile(r"by (\w*#\d{1,4})(?: until <t:(\d*):f>)?.")
 
 
 def _convert_legacy_dict_block_format(

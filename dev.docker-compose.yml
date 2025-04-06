@@ -1,13 +1,18 @@
 services:
   bot:
     image: ghcr.io/khakers/openmodmail:develop
+    restart: no
     build:
         context: .
         dockerfile: Dockerfile
-    # env_file:
-    #   - .env
+        args:
+          INCLUDE_SUPPORTUTILS: true
+          PYTHON_VERSION: 3.13
+#    env_file:
+#      - .env
     environment:
       - CONNECTION_URI=mongodb://mongo
+      - TOKEN=${DISCORD_BOT_TOKEN}
     depends_on:
       - mongo
 

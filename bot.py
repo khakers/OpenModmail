@@ -167,8 +167,9 @@ class ModmailBot(commands.Bot):
 
     def startup(self):
         logger.line()
+        ""
         logger.info(
-            """
+            r"""
   ____                __  ___        __           _ __
  / __ \___  ___ ___  /  |/  /__  ___/ /_ _  ___ _(_) /
 / /_/ / _ \/ -_) _ \/ /|_/ / _ \/ _  /  ' \/ _ `/ / / 

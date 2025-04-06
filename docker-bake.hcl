@@ -1,6 +1,6 @@
 target "_common" {
   args = {
-    PYTHON_VERSION = "3.11"
+    PYTHON_VERSION = "3.12"
   }
   platforms = ["linux/amd64", "linux/arm64"]
 }
