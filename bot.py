@@ -947,7 +947,9 @@ class ModmailBot(commands.Bot):
                     text=self.config["disabled_current_thread_footer"],
                     icon_url=self.get_guild_icon(guild=message.guild, size=128),
                 )
-                logger.info("A message was blocked from %s due to disabled Modmail.", message.author)
+                logger.info(
+                    "A message was blocked from %s because Modmail is currently disabled.", message.author
+                )
                 await self.add_reaction(message, blocked_emoji)
                 return await message.channel.send(embed=embed)
 
