@@ -173,7 +173,6 @@ class ConfigManager:
         "enable_eval": True,
         # github access token for private repositories
         "github_token": None,
-        "disable_autoupdates": False,
         "disable_updates": False,
         # Logging
         "log_level": "INFO",
@@ -213,7 +212,6 @@ class ConfigManager:
         "enable_plugins",
         "data_collection",
         "enable_eval",
-        "disable_autoupdates",
         "disable_updates",
         "update_notifications",
         "thread_contact_silently",

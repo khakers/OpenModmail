@@ -33,6 +33,8 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Remove Discord.py dependency version check
 - Remove modmail telemetry
 - Remove lottie sticker support
+- Autoupdate system
+  - Autoupdating was prone to serious issues and cannot be used within container images, the only supported distribution method of OpenModmail.
 
 ### Fixed
 - Persistent notes have been fixed after the previous discord.py update.

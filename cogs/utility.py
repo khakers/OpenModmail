@@ -14,18 +14,17 @@ from textwrap import indent
 from typing import Union
 
 import discord
+from aiohttp import ClientResponseError
 from discord.enums import ActivityType, Status
 from discord.ext import commands, tasks
 from discord.ext.commands.view import StringView
-
-from aiohttp import ClientResponseError
 from packaging.version import Version
 
 from core import checks, migrations, utils
 from core.changelog import Changelog
 from core.models import HostingMethod, InvalidConfigError, PermissionLevel, UnseenFormatter, getLogger
 from core.paginator import EmbedPaginatorSession, MessagePaginatorSession
-from core.utils import trigger_typing, truncate, DummyParam
+from core.utils import DummyParam, trigger_typing, truncate
 
 logger = getLogger(__name__)
 
@@ -872,7 +871,7 @@ class Utility(commands.Cog):
             embed.set_author(name="Current config(s):", icon_url=self.bot.user.display_avatar.url)
             config = self.bot.config.filter_default(self.bot.config)
 
-            field_count = 0;
+            field_count = 0
             for name, value in config.items():
                 if field_count >= 25:
                     break
@@ -1939,141 +1938,24 @@ class Utility(commands.Cog):
 
     @commands.command()
     @checks.has_permissions(PermissionLevel.OWNER)
-    @checks.github_token_required(ignore_if_not_heroku=True)
     @checks.updates_enabled()
     @trigger_typing
+    @DeprecationWarning
     async def update(self, ctx, *, flag: str = ""):
         """
+        REMOVED
         Update Modmail.
         To stay up-to-date with the latest commit from GitHub, specify "force" as the flag.
         """
 
-        if self.bot.hosting_method == HostingMethod.DOCKER:
-            await ctx.send(
-                embed=discord.Embed(
-                    title="Error",
-                    description="This command is not supported on Docker.",
-                    color=self.bot.error_color,
-                )
+        await ctx.send(
+            embed=discord.Embed(
+                title="Error",
+                description="This command is not supported.",
+                color=self.bot.error_color,
             )
-            return
-
-        changelog = await Changelog.from_url(self.bot)
-        latest = changelog.latest_version
-
-        desc = (
-            f"The latest version is [`{self.bot.version}`]"
-            "(https://github.com/raidensakura/modmail/blob/stable/bot.py#L1)"
         )
-
-        if self.bot.version >= Version(latest.version) and flag.lower() != "force":
-            embed = discord.Embed(title="Already up to date", description=desc, color=self.bot.main_color)
-
-            data = await self.bot.api.get_user_info()
-            if data:
-                user = data["user"]
-                embed.set_author(name=user["username"], icon_url=user["avatar_url"], url=user["url"])
-            await ctx.send(embed=embed)
-        else:
-            error = None
-            data = {}
-            try:
-                # update fork if gh_token exists
-                data = await self.bot.api.update_repository()
-            except InvalidConfigError:
-                pass
-            except ClientResponseError as exc:
-                error = exc
-
-            if self.bot.hosting_method == HostingMethod.HEROKU:
-                if error is not None:
-                    embed = discord.Embed(
-                        title="Update failed",
-                        description=f"Error status: {error.status}.\nError message: {error.message}",
-                        color=self.bot.error_color,
-                    )
-                    return await ctx.send(embed=embed)
-                if not data:
-                    # invalid gh_token
-                    embed = discord.Embed(
-                        title="Update failed",
-                        description="Invalid Github token.",
-                        color=self.bot.error_color,
-                    )
-                    return await ctx.send(embed=embed)
-
-                commit_data = data["data"]
-                user = data["user"]
-                if commit_data and commit_data.get("html_url"):
-                    embed = discord.Embed(color=self.bot.main_color)
-
-                    embed.set_footer(text=f"Updating Modmail v{self.bot.version} -> v{latest.version}")
-
-                    embed.set_author(
-                        name=user["username"] + " - Updating bot",
-                        icon_url=user["avatar_url"],
-                        url=user["url"],
-                    )
-
-                    embed.description = latest.description
-                    for name, value in latest.fields.items():
-                        embed.add_field(name=name, value=truncate(value, 200))
-
-                    html_url = commit_data["html_url"]
-                    short_sha = commit_data["sha"][:6]
-                    embed.add_field(name="Merge Commit", value=f"[`{short_sha}`]({html_url})")
-                else:
-                    embed = discord.Embed(
-                        title="Already up to date",
-                        description="No further updates required.",
-                        color=self.bot.main_color,
-                    )
-                    embed.set_footer(text="Force update")
-                    embed.set_author(name=user["username"], icon_url=user["avatar_url"], url=user["url"])
-                await ctx.send(embed=embed)
-            else:
-                command = "git pull"
-                proc = await asyncio.create_subprocess_shell(
-                    command,
-                    stderr=PIPE,
-                    stdout=PIPE,
-                )
-                err = await proc.stderr.read()
-                err = err.decode("utf-8").rstrip()
-                res = await proc.stdout.read()
-                res = res.decode("utf-8").rstrip()
-
-                if err and not res:
-                    embed = discord.Embed(title="Update failed", description=err, color=self.bot.error_color)
-                    await ctx.send(embed=embed)
-
-                elif res != "Already up to date.":
-                    logger.info("Bot has been updated.")
-
-                    embed = discord.Embed(
-                        title="Bot has been updated",
-                        color=self.bot.main_color,
-                    )
-                    embed.set_footer(text=f"Updating Modmail v{self.bot.version} " f"-> v{latest.version}")
-                    embed.description = latest.description
-                    for name, value in latest.fields.items():
-                        embed.add_field(name=name, value=truncate(value, 200))
-
-                    if self.bot.hosting_method == HostingMethod.OTHER:
-                        embed.description = (
-                            "If you do not have an auto-restart setup, please manually start the bot.",
-                        )
-
-                    await ctx.send(embed=embed)
-                    return await self.bot.close()
-                else:
-                    embed = discord.Embed(
-                        title="Already up to date",
-                        description=desc,
-                        color=self.bot.main_color,
-                    )
-                    embed.set_footer(text="Force update")
-                    await ctx.send(embed=embed)
+        return
 
     @commands.command(hidden=True, name="eval")
     @checks.has_permissions(PermissionLevel.OWNER)

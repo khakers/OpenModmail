@@ -1169,14 +1169,6 @@
             "This configuration can only be set through `.env` file or environment (config) variables."
         ]
     },
-    "disable_autoupdates": {
-        "default": "No",
-        "description": "Controls if autoupdates should be disabled or not.",
-        "examples": [],
-        "notes": [
-            "This configuration can only be set through `.env` file or environment (config) variables."
-        ]
-    },
     "disable_updates": {
         "default": "No",
         "description": "Controls if the update command should be disabled or not.",
