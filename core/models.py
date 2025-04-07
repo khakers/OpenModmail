@@ -1,3 +1,4 @@
+import _string
 import json
 import logging
 import os
@@ -10,7 +11,6 @@ from logging.handlers import RotatingFileHandler
 from string import Formatter
 from typing import Dict, Optional
 
-import _string
 import discord
 from discord.ext import commands
 
@@ -345,6 +345,8 @@ Default = _Default()
 
 
 class SafeFormatter(Formatter):
+    max_width = 100
+
     def get_field(self, field_name, args, kwargs):
         first, rest = _string.formatter_field_name_split(field_name)
 
@@ -371,6 +373,18 @@ class SafeFormatter(Formatter):
         except (IndexError, KeyError):
             pass
         return "<Invalid>", first
+
+    # https://stackoverflow.com/a/79533521
+    def format_field(self, value, format_spec):
+        # format_spec is an expanded format spec.  It cannot have any indirect
+        # width references.
+        for x in re.findall(r"\b\d+\b", format_spec):
+            if int(x) > self.max_width:
+                # This intentionally does not include the max width in the
+                # error message, to make an attacker have to work a bit
+                # harder.
+                raise ValueError(f"Invalid format string width" f" specification {x} is too large")
+        return super().format_field(value, format_spec)
 
 
 class UnseenFormatter(Formatter):
