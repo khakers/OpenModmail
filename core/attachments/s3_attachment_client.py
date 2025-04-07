@@ -93,9 +93,11 @@ class S3AttachmentHandler(IAttachmentHandler):
                 {
                     "id": attachment.id,
                     "filename": attachment.filename,
-                    "type": "s3",
-                    "s3_object": result.object_name,
-                    "s3_bucket": result.bucket_name,
+                    "type": "openmodmail_s3",
+                    "s3": {
+                        "object": result.object_name,
+                        "bucket": result.bucket_name,
+                    }
                     "content_type": attachment.content_type,
                     "width": attachment.width,
                     "height": attachment.height,
