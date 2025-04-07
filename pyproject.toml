@@ -79,10 +79,7 @@ dependencies = [
     "cairocffi~=1.3.0",
     "cffi>=1.17.1",
     "strenum",
-    "discord-py~=2.3.0",
-    # required by discord-py for python >= 3.13
-    # Added as dep in discord-py 2.5.2
-    "audioop-lts; python_version >= '3.13'",
+    "discord-py~=2.5.0",
     "setuptools>=69.0.3",
     "packaging>=24.1",
 ]
