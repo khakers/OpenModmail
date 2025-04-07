@@ -701,6 +701,34 @@ class MongoDBClient(ApiClient):
             {"channel_id": str(channel_id)}, {"$set": data}, return_document=True
         )
 
+    async def close_log(
+        self,
+        channel_id: int | str,
+        closer: discord.Member | discord.User,
+        message: Optional[str],
+        title: str,
+        silent: bool = False,
+        scheduled: bool = False,
+    ) -> dict:
+        data = {
+            "open": False,
+            "title": title,
+            "closed_at": discord.utils.utcnow(),
+            "close_message": message,
+            "silent_close": silent,
+            "scheduled_close": scheduled,
+            "closer": {
+                "id": str(closer.id),
+                "name": closer.name,
+                "discriminator": closer.discriminator,
+                "avatar_url": closer.display_avatar.url,
+                "mod": True,
+            },
+        }
+        return await self.logs.find_one_and_update(
+            {"channel_id": str(channel_id)}, {"$set": data}, return_document=True
+        )
+
     async def search_closed_by(self, user_id: Union[int, str]):
         return await self.logs.find(
             {"guild_id": str(self.bot.guild_id), "open": False, "closer.id": str(user_id)},

@@ -389,7 +389,7 @@ class Thread:
     async def close(
         self,
         *,
-        closer: typing.Union[discord.Member, discord.User],
+        closer: discord.Member | discord.User,
         after: int = 0,
         silent: bool = False,
         delete_channel: bool = True,
@@ -426,7 +426,14 @@ class Thread:
         else:
             await self._close(closer, silent, delete_channel, message)
 
-    async def _close(self, closer, silent=False, delete_channel=True, message=None, scheduled=False):
+    async def _close(
+        self,
+        closer: discord.Member | discord.User,
+        silent=False,
+        delete_channel=True,
+        message=None,
+        scheduled=False,
+    ):
         try:
             self.manager.cache.pop(self.id)
         except KeyError as e:
@@ -442,22 +449,13 @@ class Thread:
 
         # Logging
         if self.channel:
-            log_data = await self.bot.api.post_log(
-                self.channel.id,
-                {
-                    "open": False,
-                    "title": match_title(self.channel.topic),
-                    "closed_at": str(discord.utils.utcnow()),
-                    "nsfw": self.channel.nsfw,
-                    "close_message": message,
-                    "closer": {
-                        "id": str(closer.id),
-                        "name": closer.name,
-                        "discriminator": closer.discriminator,
-                        "avatar_url": closer.display_avatar.url,
-                        "mod": True,
-                    },
-                },
+            log_data = await self.bot.api.close_log(
+                channel_id=self.channel.id,
+                closer=closer,
+                message=message,
+                title=match_title(self.channel.topic),
+                silent=silent,
+                scheduled=scheduled,
             )
         else:
             log_data = None
@@ -467,7 +465,7 @@ class Thread:
             if prefix == "NONE":
                 prefix = ""
             log_url = (
-                f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{log_data['key']}"
+                f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{log_data['_id']}"
             )
 
             if log_data["title"]:
@@ -483,7 +481,7 @@ class Thread:
             else:
                 _nsfw = ""
 
-            desc = f"[`{_nsfw}{log_data['key']}`]({log_url}): "
+            desc = f"[`{_nsfw}{log_data['_id']}`]({log_url}): "
             desc += truncate(sneak_peak, max=75 - 13)
         else:
             desc = "Could not resolve log url."
@@ -1025,9 +1023,11 @@ class Thread:
         images.extend(image_urls)
         images.extend(
             (
-                i.url
-                if i.format in (discord.StickerFormatType.png, discord.StickerFormatType.apng)
-                else None,
+                (
+                    i.url
+                    if i.format in (discord.StickerFormatType.png, discord.StickerFormatType.apng)
+                    else None
+                ),
                 i.name,
                 True,
             )
