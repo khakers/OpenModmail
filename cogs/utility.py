@@ -1940,8 +1940,7 @@ class Utility(commands.Cog):
     @checks.has_permissions(PermissionLevel.OWNER)
     @checks.updates_enabled()
     @trigger_typing
-    @DeprecationWarning
-    async def update(self, ctx, *, flag: str = ""):
+    async def update(self, ctx):
         """
         REMOVED
         Update Modmail.
