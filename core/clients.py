@@ -713,7 +713,7 @@ class MongoDBClient(ApiClient):
         data = {
             "open": False,
             "title": title,
-            "closed_at": discord.utils.utcnow(),
+            "closed_at": str(discord.utils.utcnow()),
             "close_message": message,
             "silent_close": silent,
             "scheduled_close": scheduled,
