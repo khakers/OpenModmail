@@ -665,7 +665,7 @@ class MongoDBClient(ApiClient):
     ) -> dict:
         channel_id = str(channel_id) or str(message.channel.id)
         message_id = str(message_id) or str(message.id)
-
+        attachments = await self.bot.attachment_handler.upload_attachments(message)
         data = {
             "timestamp": str(message.created_at),
             "message_id": message_id,
@@ -678,18 +678,7 @@ class MongoDBClient(ApiClient):
             },
             "content": message.content,
             "type": type_,
-            "attachments": [
-                {
-                    "id": a.id,
-                    "filename": a.filename,
-                    # In previous versions this was true for both videos and images
-                    "is_image": a.content_type.startswith("image/"),
-                    "size": a.size,
-                    "url": a.url,
-                    "content_type": a.content_type,
-                }
-                for a in message.attachments
-            ],
+            "attachments": attachments,
         }
 
         return await self.logs.find_one_and_update(

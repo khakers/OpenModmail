@@ -13,8 +13,23 @@ services:
     environment:
       - CONNECTION_URI=mongodb://mongo
       - TOKEN=${DISCORD_BOT_TOKEN}
+      - S3_ENDPOINT=minio:9000
+      - s3_access_key=oFNbi1SbE6HPiA8yWEes
+      - s3_secret_key=i6XgPBwC2DXppqcipYBueBdFqHd5QeizckvpUf5B
+      - attachment_datastore=s3
     depends_on:
       - mongo
 
+  minio:
+    # minioadmin:minioadmin
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - 127.0.0.1:9000:9000
+      - 127.0.0.1:9001:9001
+    volumes:
+      - minio:/data
+
 volumes:
   mongodb:
+  minio:
