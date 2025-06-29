@@ -48,36 +48,18 @@ jobs:
             type=sha
             # set latest tag for stable releases
             type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
-          bake-target: openmodmail
+          bake-target: docker-metadata-action
 
-      - name: Extract metadata (tags, labels) for Docker supportutils
-        id: docker-meta-supportutils
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: |
-            suffix=-supportutils,onlatest=true
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha
-            # set latest tag for stable releases
-            type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
-          bake-target: openmodmail-supportutils
-          
       - name: Build and push
         uses: docker/bake-action@v6
         with:
-          push: ${{ ! startsWith(github.ref, 'refs/pull/') }}
+#          source: .
+          push: ${{ ! startsWith(github.ref, 'refs/pull/') && ! github.event.act }}
           pull: true
           sbom: true
           files: |            
             ./docker-bake.hcl
             cwd://${{ steps.docker-meta-base.outputs.bake-file }}
-            cwd://${{ steps.docker-meta-supportutils.outputs.bake-file }}
-          targets: openmodmail,openmodmail-supportutils
+          targets: openmodmail
 
 
