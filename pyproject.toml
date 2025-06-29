@@ -1,6 +1,6 @@
 [tool.black]
 line-length = "110"
-target-version = ['py310']
+target-version = ['py312']
 include = '\.pyi?$'
 extend-exclude = '''
 (
@@ -20,7 +20,7 @@ extend-exclude = '''
 '''
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 line-length = 110
 select = ["C90", "E", "F", "I001", "PGH004", "RUF100"]
 ignore = ["F405", "E741", "C901", "F403", "E501"]
