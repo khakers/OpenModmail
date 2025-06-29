@@ -6,7 +6,8 @@ services:
         context: .
         dockerfile: Dockerfile
         args:
-          INCLUDE_SUPPORTUTILS: true
+          INCLUDE_SUPPORTUTILS: "true"
+          INCLUDE_PIP: "true"
           PYTHON_VERSION: 3.13
 #    env_file:
 #      - .env

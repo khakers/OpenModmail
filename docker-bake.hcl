@@ -6,16 +6,30 @@ target "_common" {
 }
 
 target "openmodmail" {
+  name = "openmodmail${notequal("",INCLUDE_SUPPORTUTILS) ? "-supportutils" : ""}${notequal("",INCLUDE_PIP) ? "-pip"  : ""}"
   inherits = ["_common"]
   context    = "."
   dockerfile = "Dockerfile"
-}
-
-target "openmodmail-supportutils" {
-  inherits = ["_common"]
-  context    = "."
-  dockerfile = "Dockerfile"
-  args = {
-    INCLUDE_SUPPORTUTILS = "true"
+  matrix = {
+    INCLUDE_SUPPORTUTILS = ["true", ""]
+    INCLUDE_PIP          = ["true", ""]
   }
 }
+
+# target "openmodmail-supportutils" {
+#   inherits = ["_common"]
+#   context    = "."
+#   dockerfile = "Dockerfile"
+#   args = {
+#     INCLUDE_SUPPORTUTILS = "true"
+#   }
+# }
+#
+# target "openmodmail-pip" {
+#   inherits = ["_common"]
+#   context    = "."
+#   dockerfile = "Dockerfile"
+#   args = {
+#     INCLUDE_PIP = "true"
+#   }
+# }

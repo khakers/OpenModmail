@@ -9,7 +9,7 @@
     <img src="https://img.shields.io/badge/Version-4.1.0-7d5edd?style=shield&logo=https://modmail-docs.netlify.app/favicon.png">
   </a>
   <a href="https://www.python.org/downloads/">
-    <img src="https://img.shields.io/badge/Compatible%20With-Python%203.10%20|%203.11-blue.svg?style=shield&logo=Python" alt="Made with Python 3.8">
+    <img src="https://img.shields.io/badge/Compatible%20With-Python%203.12%20|%203.13-blue.svg?style=shield&logo=Python" alt="Made with Python 3.12">
   </a>
   <a href="https://github.com/ambv/black">
     <img src="https://img.shields.io/badge/Code%20Style-Black-black?style=shield">
@@ -26,10 +26,10 @@
 > of modmail.
 > This fork is not affiliated with the original modmail project.
 > It was done to add features that were not being added to the original modmail project due to its inactivity and to
-> better align with what I wanted for modmail-viewer
+> better align with what I wanted for modmail-viewer.
 > You probably shouldn't use this, but if you for some reason do, it does have some extra features, fixes, and bugs.
 
-I am the developer of [modmail-viewer](https://github.com/khakers/modmail-viewer), which is the recommended way to view
+I am the developer of [modmail-viewer](https://github.com/khakers/modmail-viewer) and [modmail-viewer-ts](https://github.com/khakers/modmail-viewer-ts), which are the recommended way to view
 logs for this fork.
 
 ## Features
@@ -53,7 +53,7 @@ logs for this fork.
 * **Robust implementation:**
   * Schedule tasks in human time, e.g. `?close in 2 hours silently`.
   * Editing and deleting messages are synced.
-  * Support for the diverse range of message contents (multiple images, files).
+  * Support for a diverse range of message contents (multiple images, files).
   * Paginated commands interfaces via reactions.
 
 
@@ -100,11 +100,23 @@ This guide assume you already have Docker or Docker Compose installed.
     ```console
     $ docker compose up -d
     ```
+  
+### Docker image tags
+
+To pin to a specific version, use either the sha256 hash of the image or the commit sha. ex: `ghcr.io/khakers/openmodmail:sha-24286a`.
+For most users, the latest tag is recommended and will be updated to point to stable releases when they become available.
+> [!WARNING]
+> The latest tag currently points to development releases, but will change in the future.
+
+### Image tag variants
+
+Images with '-supportutils' include a fixed version of the supportutils package, used by a number of plugins.
+Images with '-pip' include pip installed into the virtual environment, which is required for some plugins. It is not currently included by default
     
 ## Plugins
 
 Modmail supports the use of third-party plugins to extend or add functionalities to the bot.
-Plugins allow niche features as well as anything else outside of the scope of the core functionality of Modmail. 
+Plugins allow niche features as well as anything else outside the scope of core Modmail functionality. 
 
 You can find a list of third-party plugins using the `?plugins registry`  command on the bot or by reading through the official [REGISTRY.json](https://github.com/modmail-dev/modmail/blob/master/plugins/registry.json).
 

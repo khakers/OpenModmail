@@ -22,9 +22,14 @@ WORKDIR /modmail
 RUN pdm install --check --prod --no-editable --fail-fast;
 
 ARG INCLUDE_SUPPORTUTILS=false
+ARG INCLUDE_PIP=false
 
 RUN if [ "$INCLUDE_SUPPORTUTILS" = "true" ]; then \
         pdm install --prod -G supportutils --no-editable --fail-fast; \
+    fi
+
+RUN if [ "$INCLUDE_PIP" = "true" ]; then \
+        /modmail/.venv/bin/python -m ensurepip --upgrade; \
     fi
 
 FROM base AS runtime
@@ -33,7 +38,7 @@ RUN adduser --disabled-password modmail
 USER modmail
 
 
-ENV USING_DOCKER yes
+ENV USING_DOCKER=yes
 COPY --chown=modmail:modmail --from=builder /modmail /modmail
 
 COPY --chown=modmail:modmail . /modmail
