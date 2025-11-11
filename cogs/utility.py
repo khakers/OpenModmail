@@ -1,3 +1,4 @@
+from core.utils import trigger_typing, truncate, safe_typing
 import asyncio
 import inspect
 import os
@@ -82,7 +83,9 @@ class ModmailHelpCommand(commands.HelpCommand):
             embed.add_field(name="Commands", value=format_ or "No commands.")
 
             name = cog.qualified_name + " - Help" if not no_cog else "Miscellaneous Commands"
-            embed.set_author(name=name, icon_url=bot.user.display_avatar.url)
+            embed.set_author(
+                name=name, icon_url=bot.user.display_avatar.url if bot.user.display_avatar else None
+            )
 
             embed.set_footer(
                 text=f'Type "{prefix}{self.command_attrs["name"]} command" '
@@ -314,10 +317,9 @@ class Utility(commands.Cog):
         embed = discord.Embed(color=self.bot.main_color, timestamp=discord.utils.utcnow())
         embed.set_author(
             name="OpenModmail - About",
-            icon_url=self.bot.user.display_avatar.url,
-            # url="https://discord.gg/F34cRU8",
+            icon_url=self.bot.user.display_avatar.url if self.bot.user.display_avatar else None,
         )
-        embed.set_thumbnail(url=self.bot.user.display_avatar.url)
+        embed.set_thumbnail(url=self.bot.user.display_avatar.url if self.bot.user.display_avatar else None)
 
         desc = "This is an open source Discord bot that serves as a means for "
         desc += "members to easily communicate with server administrators in "
@@ -851,7 +853,10 @@ class Utility(commands.Cog):
             if key in keys:
                 desc = f"`{key}` is set to `{self.bot.config[key]}`"
                 embed = discord.Embed(color=self.bot.main_color, description=desc)
-                embed.set_author(name="Config variable", icon_url=self.bot.user.display_avatar.url)
+                embed.set_author(
+                    name="Config variable",
+                    icon_url=self.bot.user.display_avatar.url if self.bot.user.display_avatar else None,
+                )
 
             else:
                 embed = discord.Embed(
@@ -868,7 +873,10 @@ class Utility(commands.Cog):
                 color=self.bot.main_color,
                 description="Here is a list of currently set configuration variable(s).",
             )
-            embed.set_author(name="Current config(s):", icon_url=self.bot.user.display_avatar.url)
+            embed.set_author(
+                name="Current config(s):",
+                icon_url=self.bot.user.display_avatar.url if self.bot.user.display_avatar else None,
+            )
             config = self.bot.config.filter_default(self.bot.config)
 
             field_count = 0
@@ -1357,7 +1365,18 @@ class Utility(commands.Cog):
                     key = self.bot.modmail_guild.get_member(value)
                 if key is not None:
                     logger.info("Granting %s access to Modmail category.", key.name)
-                    await self.bot.main_category.set_permissions(key, read_messages=True)
+                    try:
+                        await self.bot.main_category.set_permissions(key, read_messages=True)
+                    except discord.Forbidden:
+                        warn = discord.Embed(
+                            title="Missing Permissions",
+                            color=self.bot.error_color,
+                            description=(
+                                "I couldn't update the Modmail category permissions. "
+                                "Please grant me 'Manage Channels' and 'Manage Roles' for this category."
+                            ),
+                        )
+                        await ctx.send(embed=warn)
 
         embed = discord.Embed(
             title="Success",
@@ -1448,17 +1467,50 @@ class Utility(commands.Cog):
             if level > PermissionLevel.REGULAR:
                 if value == -1:
                     logger.info("Denying @everyone access to Modmail category.")
-                    await self.bot.main_category.set_permissions(
-                        self.bot.modmail_guild.default_role, read_messages=False
-                    )
+                    try:
+                        await self.bot.main_category.set_permissions(
+                            self.bot.modmail_guild.default_role, read_messages=False
+                        )
+                    except discord.Forbidden:
+                        warn = discord.Embed(
+                            title="Missing Permissions",
+                            color=self.bot.error_color,
+                            description=(
+                                "I couldn't update the Modmail category permissions. "
+                                "Please grant me 'Manage Channels' and 'Manage Roles' for this category."
+                            ),
+                        )
+                        await ctx.send(embed=warn)
                 elif isinstance(user_or_role, discord.Role):
                     logger.info("Denying %s access to Modmail category.", user_or_role.name)
-                    await self.bot.main_category.set_permissions(user_or_role, overwrite=None)
+                    try:
+                        await self.bot.main_category.set_permissions(user_or_role, overwrite=None)
+                    except discord.Forbidden:
+                        warn = discord.Embed(
+                            title="Missing Permissions",
+                            color=self.bot.error_color,
+                            description=(
+                                "I couldn't update the Modmail category permissions. "
+                                "Please grant me 'Manage Channels' and 'Manage Roles' for this category."
+                            ),
+                        )
+                        await ctx.send(embed=warn)
                 else:
                     member = self.bot.modmail_guild.get_member(value)
                     if member is not None and member != self.bot.modmail_guild.me:
                         logger.info("Denying %s access to Modmail category.", member.name)
-                        await self.bot.main_category.set_permissions(member, overwrite=None)
+                        try:
+                            await self.bot.main_category.set_permissions(member, overwrite=None)
+                        except discord.Forbidden:
+                            warn = discord.Embed(
+                                title="Missing Permissions",
+                                color=self.bot.error_color,
+                                description=(
+                                    "I couldn't update the Modmail category permissions. "
+                                    "Please grant me 'Manage Channels' and 'Manage Roles' for this category."
+                                ),
+                            )
+                            await ctx.send(embed=warn)
 
         embed = discord.Embed(
             title="Success",
@@ -1930,8 +1982,12 @@ class Utility(commands.Cog):
         if data:
             embed = discord.Embed(title="GitHub", description="Current User", color=self.bot.main_color)
             user = data["user"]
-            embed.set_author(name=user["username"], icon_url=user["avatar_url"], url=user["url"])
-            embed.set_thumbnail(url=user["avatar_url"])
+            embed.set_author(
+                name=user["username"],
+                icon_url=user["avatar_url"] if user["avatar_url"] else None,
+                url=user["url"],
+            )
+            embed.set_thumbnail(url=user["avatar_url"] if user["avatar_url"] else None)
             await ctx.send(embed=embed)
         else:
             await ctx.send(embed=discord.Embed(title="Invalid Github Token", color=self.bot.error_color))

@@ -58,7 +58,8 @@ gitDescribe = "git describe --tags --dirty"
 [project]
 name = "Discord-OpenModmail"
 version = "5.0.0-alpha"
-description = "Fork² of a feature rich Discord Modmail bot written in Python."
+description = "Fork² of a feature rich Discord Modmail bot written in Python.",
+license = 'AGPL-3.0-only'
 authors = [
     {name = "", email = ""},
 ]
