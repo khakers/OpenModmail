@@ -432,11 +432,14 @@ class ModmailBot(commands.Bot):
     @property
     def main_category(self) -> typing.Optional[discord.CategoryChannel]:
         if self.modmail_guild is not None:
+            logger.debug(f"Resolving main category for guild {self.modmail_guild.name}")
             category_id = self.config["main_category_id"]
+            logger.debug(f"Found main category ID in config: {category_id}")
             if category_id is not None:
                 try:
                     cat = discord.utils.get(self.modmail_guild.categories, id=int(category_id))
                     if cat is not None:
+                        logger.debug(f"Resolved main category: {cat.id}")
                         return cat
                 except ValueError:
                     pass

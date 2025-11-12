@@ -42,7 +42,8 @@ class Modmail(commands.Cog):
             return await ctx.send(f"You can only setup in the Modmail guild: {self.bot.modmail_guild}.")
 
         if self.bot.main_category is not None:
-            logger.debug("Can't re-setup server, main_category is found.")
+            logger.warning("Can't re-setup server, main_category is found.")
+            logger.debug(f"Current main category: {self.bot.main_category.name}")
             return await ctx.send(f"{self.bot.modmail_guild} is already set up.")
 
         if self.bot.modmail_guild is None:
