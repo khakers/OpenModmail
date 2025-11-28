@@ -37,6 +37,23 @@ Configuration Options:
 * `thread_min_characters_response`: Response shown to the user if their message is too short.
 * `thread_min_characters_footer`: Footer displaying the minimum required characters.
 
+* `unsnooze_history_limit`: Limits the number of messages replayed when unsnoozing (genesis message and notes are always shown).
+* `snooze_behavior`: Choose between `delete` (legacy) or `move` behavior for snoozing.
+* `snoozed_category_id`: Target category for `move` snoozing; required when `snooze_behavior` is `move`.
+* Thread-creation menu: Adds an interactive select step before a thread channel is created.
+  * Commands:
+    * `threadmenu toggle`: Enable/disable the menu.
+    * `threadmenu show`: List current top-level options.
+    * `threadmenu option add`: Interactive wizard to create an option.
+    * `threadmenu option edit/remove/show`: Manage or inspect an existing option.
+    * `threadmenu submenu create/delete/list/show`: Manage submenus.
+    * `threadmenu submenu option add/edit/remove`: Manage options inside a submenu.
+  * Configuration / Behavior:
+    * Per-option `category` targeting when creating a thread; falls back to `main_category_id` if invalid/missing.
+    * Optional selection logging (`thread_creation_menu_selection_log`) posts the chosen option in the new thread.
+    * Anonymous prompt support (`thread_creation_menu_anonymous_menu`).
+
+
 
 ### Changed
 - Changing a threads title or NSFW status immediately updates the status in the database.
