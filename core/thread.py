@@ -262,6 +262,9 @@ class Thread:
 
         logging.info(f"[SNOOZE] DB update result: {result.modified_count}")
 
+        # Dispatch thread_snoozed event for plugins
+        self.bot.dispatch("thread_snoozed", self, moderator, snooze_for)
+
         behavior = behavior_pre
         if behavior == "move":
             # Move the channel to the snoozed category (if configured) and optionally apply a prefix
@@ -753,6 +756,9 @@ class Thread:
 
         # Mark unsnooze as complete
         self._unsnoozing = False
+
+        # Dispatch thread_unsnoozed event for plugins
+        self.bot.dispatch("thread_unsnoozed", self)
 
         # Process queued commands
         await self._process_command_queue()
