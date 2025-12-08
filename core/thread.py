@@ -865,11 +865,9 @@ class Thread:
                 if getattr(self, "_selected_thread_creation_menu_option", None) and self.bot.config.get(
                     "thread_creation_menu_selection_log"
                 ):
-                    opt = self._selected_thread_creation_menu_option
+                    path = self._selected_thread_creation_menu_option
                     try:
-                        log_txt = f"Selected menu option: {opt.get('label')} ({opt.get('type')})"
-                        if opt.get("type") == "command":
-                            log_txt += f" -> {opt.get('callback')}"
+                        log_txt = f"Selected menu path: {' -> '.join(path)}"
                         await channel.send(embed=discord.Embed(description=log_txt, color=self.bot.mod_color))
                     except Exception:
                         logger.warning(
@@ -2668,29 +2666,44 @@ class ThreadManager:
                 placeholder = "Select an option to contact the staff team."
                 timeout = 20
 
-            options = self.bot.config.get("thread_creation_menu_options") or {}
-            submenus = self.bot.config.get("thread_creation_menu_submenus") or {}
-
             # Minimal inline view implementation (avoid importing plugin code)
 
             thread.ready = False  # not ready yet
 
             class _ThreadCreationMenuSelect(discord.ui.Select):
-                def __init__(self, outer_thread: Thread):
+                def __init__(
+                    self,
+                    bot,
+                    outer_thread: Thread,
+                    option_data: dict,
+                    menu_msg: discord.Message,
+                    path: list,
+                    is_home: bool = True,
+                ):
+                    self.bot = bot
                     self.outer_thread = outer_thread
-                    opts = [
+                    self.option_data = option_data
+                    self.menu_msg = menu_msg
+                    self.path = path
+                    options = [
                         discord.SelectOption(
                             label=o["label"],
                             description=o["description"],
                             emoji=o["emoji"],
                         )
-                        for o in options.values()
+                        for o in option_data.values()
                     ]
+                    if not is_home:
+                        options.append(
+                            discord.SelectOption(
+                                label="main menu", description="Return to the main menu", emoji="🏠"
+                            )
+                        )
                     super().__init__(
                         placeholder=placeholder,
                         min_values=1,
                         max_values=1,
-                        options=opts,
+                        options=options,
                     )
 
                 async def callback(self, interaction: discord.Interaction):
@@ -2705,8 +2718,45 @@ class ThreadManager:
                     chosen_label = self.values[0]
                     # Resolve option key
                     key = chosen_label.lower().replace(" ", "_")
-                    selected = options.get(key)
-                    self.outer_thread._selected_thread_creation_menu_option = selected
+                    if key == "main_menu":
+                        option_data = self.bot.config.get("thread_creation_menu_options") or {}
+                        new_view = _ThreadCreationMenuView(
+                            self.bot,
+                            self.outer_thread,
+                            option_data,
+                            self.menu_msg,
+                            path=[],
+                            is_home=True,
+                        )
+                        return await self.menu_msg.edit(view=new_view)
+                    selected: dict = self.option_data.get(key, {})
+                    next_path = [*self.path, chosen_label]
+                    if selected.get("type", "command") == "submenu":
+                        submenu_data = self.bot.config.get("thread_creation_menu_submenus") or {}
+                        submenu_key = selected.get("callback", key)
+                        option_data = submenu_data.get(submenu_key, {})
+                        if not option_data:
+                            home_options = self.bot.config.get("thread_creation_menu_options") or {}
+                            new_view = _ThreadCreationMenuView(
+                                self.bot,
+                                self.outer_thread,
+                                home_options,
+                                self.menu_msg,
+                                path=[],
+                                is_home=True,
+                            )
+                            return await self.menu_msg.edit(view=new_view)
+                        new_view = _ThreadCreationMenuView(
+                            self.bot,
+                            self.outer_thread,
+                            option_data,
+                            self.menu_msg,
+                            path=next_path,
+                            is_home=False,
+                        )
+                        return await self.menu_msg.edit(view=new_view)
+
+                    self.outer_thread._selected_thread_creation_menu_option = next_path
                     # Reflect the selection in the original DM by editing the embed/body
                     try:
                         msg = getattr(interaction, "message", None)
@@ -2945,10 +2995,30 @@ class ThreadManager:
                                         ctx_.command.checks = old_checks
 
             class _ThreadCreationMenuView(discord.ui.View):
-                def __init__(self, outer_thread: Thread):
+                def __init__(
+                    self,
+                    bot,
+                    outer_thread: Thread,
+                    option_data: dict,
+                    menu_msg: discord.Message,
+                    path: list,
+                    is_home: bool = True,
+                ):
                     super().__init__(timeout=timeout)
                     self.outer_thread = outer_thread
-                    self.add_item(_ThreadCreationMenuSelect(outer_thread))
+                    self.path = path
+                    self.menu_msg = menu_msg
+                    self.option_data = option_data
+                    self.add_item(
+                        _ThreadCreationMenuSelect(
+                            bot,
+                            outer_thread,
+                            option_data=option_data,
+                            menu_msg=menu_msg,
+                            path=self.path,
+                            is_home=is_home,
+                        )
+                    )
 
                 async def on_timeout(self):
                     # Timeout -> abort thread creation
@@ -3070,8 +3140,12 @@ class ThreadManager:
                         embed.set_thumbnail(url=embed_thumb)
                     except Exception as e:
                         logger.debug("Thumbnail set failed (ignored): %s", e)
-                menu_view = _ThreadCreationMenuView(thread)
-                menu_msg = await recipient.send(embed=embed, view=menu_view)
+                menu_msg = await recipient.send(embed=embed)
+                option_data = self.bot.config.get("thread_creation_menu_options") or {}
+                menu_view = _ThreadCreationMenuView(
+                    self.bot, thread, option_data, menu_msg, path=[], is_home=True
+                )
+                menu_msg = await menu_msg.edit(view=menu_view)
                 # mark thread as pending menu selection
                 thread._pending_menu = True
                 # Explicitly attach the message to the view for safety in callbacks

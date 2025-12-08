@@ -178,6 +178,9 @@ class ThreadCreationMenuCore(commands.Cog):
         if label.lower() == "cancel":
             return await ctx.send("Cancelled.")
 
+        if label.lower() == "main menu":
+            return await ctx.send("You cannot use that label.")
+
         if sanitized_label in conf["options"]:
             await ctx.send("That option already exists. Use `threadmenu edit` to edit it.")
             return
