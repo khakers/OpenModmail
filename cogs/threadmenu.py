@@ -87,6 +87,19 @@ class ThreadCreationMenuCore(commands.Cog):
         conf["enabled"] = not conf["enabled"]
         await self._save_conf(conf)
         await ctx.send(f"Thread-creation menu is now {'enabled' if conf['enabled'] else 'disabled'}.")
+        advancedmenu_plugin = self.bot.get_cog("AdvancedMenu")
+        if (
+            advancedmenu_plugin
+            and hasattr(advancedmenu_plugin, "config")
+            and advancedmenu_plugin.config.get("enabled")
+            and advancedmenu_plugin.config["enabled"] is True
+            and conf["enabled"]
+        ):
+            await ctx.send(
+                "**Warning:** You are using both the core threadmenu feature and the advancedmenu plugin.\n"
+                "It is recommended to disable/uninstall the advancedmenu plugin to avoid interruption.\n"
+                "Migration guide can be found at: <https://docs.modmail.dev/usage-guide/threadmenu#advanced-legacy-usage>"
+            )
 
     @checks.has_permissions(PermissionLevel.ADMINISTRATOR)
     @threadmenu.command(name="show")
