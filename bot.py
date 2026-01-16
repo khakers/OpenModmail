@@ -1918,6 +1918,8 @@ class ModmailBot(commands.Bot):
                 "DM message not found.",
                 "Malformed thread message.",
                 "Thread message not found.",
+                "Linked DM message not found.",
+                "Thread message is an internal message, not a note.",
             }:
                 logger.debug("Failed to find linked message to delete: %s", e)
                 embed = discord.Embed(description="Failed to delete message.", color=self.error_color)
