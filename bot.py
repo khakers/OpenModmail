@@ -1,4 +1,4 @@
-__version__ = "5.0.0-DEV"
+__version__ = "5.0.0-alpha.1"
 
 
 import asyncio
@@ -174,7 +174,6 @@ class ModmailBot(commands.Bot):
         return HostingMethod.OTHER
 
     def startup(self):
-        logger.line()
         ""
         logger.info(
             r"""
@@ -186,10 +185,7 @@ class ModmailBot(commands.Bot):
         """
         )
         logger.info("v%s", __version__)
-        logger.info("Authors: kyb3r, fourjr, Taaku18")
-        logger.line()
         logger.info("discord.py: v%s", discord.__version__)
-        logger.line()
 
     async def load_extensions(self):
         for cog in self.loaded_cogs:
@@ -201,7 +197,6 @@ class ModmailBot(commands.Bot):
                 logger.debug("Successfully loaded %s.", cog)
             except Exception:
                 logger.exception("Failed to load %s.", cog)
-        logger.line("debug")
 
     @property
     def version(self):
@@ -551,12 +546,9 @@ class ModmailBot(commands.Bot):
 
         if self._started:
             # Bot has started before
-            logger.line()
             logger.warning("Bot restarted due to internal discord reloading.")
-            logger.line()
             return
 
-        logger.line()
         logger.debug("Client ready.")
         logger.info("Logged in as: %s", self.user)
         logger.info("Bot ID: %s", self.user.id)
@@ -569,28 +561,24 @@ class ModmailBot(commands.Bot):
         logger.info("Guild ID: %s", self.guild.id)
         if self.using_multiple_server_setup:
             logger.info("Receiving guild ID: %s", self.modmail_guild.id)
-        logger.line()
 
         if "dev" in __version__:
             logger.warning(
                 "You are running a developmental version. This should not be used in production. (v%s)",
                 __version__,
             )
-            logger.line()
 
         if len(self.config["blocked"]) > 0 or len(self.config["blocked_roles"]) > 0:
             logger.warning(
                 "Un-migrated blocklists found. Please run the '[p]migrate blocklist' command after backing "
                 "up your config/database. Blocklist functionality will be disabled until this is done."
             )
-            logger.line()
 
         await self.threads.populate_cache()
 
         # closures
         closures = self.config["closures"]
         logger.info("There are %d thread(s) pending to be closed.", len(closures))
-        logger.line()
 
         for recipient_id, items in tuple(closures.items()):
             after = (
@@ -2065,7 +2053,6 @@ class ModmailBot(commands.Bot):
             return
 
         logger.debug("Starting metadata loop.")
-        logger.line("debug")
 
     @tasks.loop(hours=1)
     async def autoupdate(self):

@@ -148,12 +148,12 @@ class FileFormatter(logging.Formatter):
 
 log_stream_formatter = logging.Formatter(
     "%(asctime)s %(name)s[%(lineno)d] - %(levelname)s: %(message)s",
-    datefmt="%m/%d/%y %H:%M:%S",
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
 )
 
 log_file_formatter = FileFormatter(
     "%(asctime)s %(name)s[%(lineno)d] - %(levelname)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    datefmt="%Y-%m-%d %H:%M:%S%z",
 )
 
 json_formatter = JsonFormatter(
@@ -334,6 +334,7 @@ def configure_logging(bot) -> None:
         logger.info("Discord logging level: %s.", logging.getLevelName(d_level))
     d_logger.addHandler(stream_handler)
     d_logger.addHandler(ch_debug)
+    d_logger.propagate = False
 
     logger.debug("Successfully configured logging.")
 
