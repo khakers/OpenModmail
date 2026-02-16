@@ -57,16 +57,16 @@ gitDescribe = "git describe --tags --dirty"
 # Manually sync with pdm sync-pre-commit
 [project]
 name = "Discord-OpenModmail"
-version = "5.0.0-alpha"
-description = "Fork² of a feature rich Discord Modmail bot written in Python.",
+version = "5.0.0-alpha.1"
+description = "Fork² of a feature rich Discord Modmail bot written in Python."
 license = 'AGPL-3.0-only'
 authors = [
     {name = "", email = ""},
 ]
 dependencies = [
-    "aiohttp~=3.11.16",
-    "colorama~=0.4.5",
-    "emoji~=1.7.0",
+    "aiohttp~=3.13.2",
+    "colorama~=0.4.6",
+    "emoji~=2.8.0",
     "isodate~=0.6.0",
     # TODO MOTOR is deprecated for PyMongo 4.9+
     "motor>=3.7.0",
@@ -77,16 +77,14 @@ dependencies = [
     "uvloop~=0.21.0; sys_platform != \"win32\"",
     "requests>=2.32.0",
     "attrs~=23.1.0",
-    "cairocffi~=1.3.0",
-    "cffi>=1.17.1",
     "strenum",
-    "discord-py~=2.5.0",
+    "discord-py~=2.6.3",
     "setuptools>=69.0.3",
     "packaging>=24.1",
+    "lottie>=0.7.2",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
-license = {text = "AGPL-3.0-or-later"}
 [project.optional-dependencies]
 supportutils = [
     "utils @ git+https://github.com/Jerrie-Aries/modmail-plugins.git@master#subdirectory=utils",

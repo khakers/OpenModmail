@@ -20,7 +20,7 @@ from dateutil import parser
 from discord.ext import commands, tasks
 from discord.ext.commands import MemberConverter
 from discord.ext.commands.view import StringView
-from emoji import UNICODE_EMOJI
+from emoji import is_emoji
 from packaging.version import Version
 
 from core.blocklist import Blocklist, BlockReason
@@ -666,11 +666,11 @@ class ModmailBot(commands.Bot):
         ctx = SimpleNamespace(bot=self, guild=self.modmail_guild)
         converter = commands.EmojiConverter()
 
-        if name not in UNICODE_EMOJI["en"]:
+        if not is_emoji(name):
             try:
                 name = await converter.convert(ctx, name.strip(":"))
             except commands.BadArgument as e:
-                logger.warning("%s is not a valid emoji. %s.", name, e)
+                logger.warning(f"{name} is not a valid emoji. {e}.")
                 raise
         return name
 

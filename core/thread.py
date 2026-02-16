@@ -1676,7 +1676,7 @@ class Thread:
                 logger.warning("Auto-unsnooze on reply failed: %s", e)
 
         if not message.content and not message.attachments and not message.stickers:
-        """Returns List[user_dm_msg] and thread_channel_msg"""
+            """Returns List[user_dm_msg] and thread_channel_msg"""
         if not message.content and not message.attachments:
             raise MissingRequiredArgument(DummyParam("msg"))
         for guild in self.bot.guilds:

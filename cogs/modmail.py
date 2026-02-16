@@ -2181,16 +2181,7 @@ class Modmail(commands.Cog):
                 description=message,
                 color=self.bot.error_color if "error" in title.lower() else self.bot.main_color,
             )
-        else:
-            embed = discord.Embed(
-                title="Error",
-                description=f"{mention} is not blocked.",
-                color=self.bot.error_color,
-            )
-
             return await ctx.send(embed=embed)
-
-        title, desc = "Error", f"{mention} is not blocked."
 
         if not isinstance(user_or_role, (discord.Role, discord.User)):
             return logger.warning(
@@ -2198,7 +2189,7 @@ class Modmail(commands.Cog):
             )
 
         if not await self.bot.blocklist.unblock_id(user_or_role.id):
-            return await send_embed(title, desc)
+            return await send_embed("Error", f"{mention} is not blocked.")
 
         return await send_embed("Success", f"{mention} has been unblocked.")
 
