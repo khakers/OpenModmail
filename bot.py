@@ -18,7 +18,6 @@ import isodate
 from aiohttp import ClientResponseError, ClientSession
 from dateutil import parser
 from discord.ext import commands, tasks
-from discord.ext.commands import MemberConverter
 from discord.ext.commands.view import StringView
 from emoji import is_emoji
 from packaging.version import Version
@@ -203,7 +202,8 @@ class ModmailBot(commands.Bot):
         return Version(__version__)
 
     @property
-    def api(self) -> ApiClient:
+    def api(self) -> MongoDBClient:
+        # TODO there's no real point in having this, we are heavily dependent on mongodb queries.
         if self._api is None:
             if self.config["database_type"].lower() == "mongodb":
                 self._api = MongoDBClient(self)
@@ -810,12 +810,26 @@ class ModmailBot(commands.Bot):
         bool
             Whether the user is blocked or not.
         """
-        member = self.guild.get_member(author.id) or await MemberConverter.convert(author)
+        member = None
+        if self.guild is not None:
+            member = self.guild.get_member(author.id)
+            if member is None:
+                try:
+                    member = await self.guild.fetch_member(author.id)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    member = None
+
         if member is None:
             # try to find in other guilds
             for g in self.guilds:
                 member = g.get_member(author.id)
                 if member:
+                    break
+                try:
+                    member = await g.fetch_member(author.id)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    continue
+                else:
                     break
 
             if member is None:
@@ -1537,14 +1551,15 @@ class ModmailBot(commands.Bot):
                 if thread.snoozed and behavior == "move":
                     if not thread.snooze_data:
                         try:
+                            # TODO/BUG: recipient.id + snoozed alone is under-scoped and may select wrong log.
                             log_entry = await self.api.logs.find_one(
-                                {"recipient.id": str(thread.id), "snoozed": True}
+                                {"recipient.id": str(thread.id), "snoozed": True, "open": True}
                             )
                             if log_entry:
                                 thread.snooze_data = log_entry.get("snooze_data")
                         except Exception:
-                            logger.debug(
-                                "Failed to add queued command reaction (⏳).",
+                            logger.error(
+                                "Failed to add queued command reaction ",
                                 exc_info=True,
                             )
                     try:
@@ -1569,7 +1584,7 @@ class ModmailBot(commands.Bot):
                     # from the sent message as reply text while still preserving attachments.
                     await thread.reply(message, message.content, anonymous=anonymous, plain=plain)
             elif ctx.invoked_with:
-                exc = commands.CommandNotFound('Command "{}" is not found'.format(ctx.invoked_with))
+                exc = commands.CommandNotFound(f'Command "{ctx.invoked_with}" is not found')
                 self.dispatch("command_error", ctx, exc)
 
     async def on_typing(self, channel, user, _):

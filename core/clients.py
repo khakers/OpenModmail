@@ -7,7 +7,7 @@ import discord
 from aiohttp import ClientResponse, ClientResponseError
 from discord import DMChannel, Member, Message, TextChannel
 from discord.ext import commands
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo.errors import ConfigurationError
 from pymongo.uri_parser import parse_uri
 
@@ -346,7 +346,7 @@ class ApiClient:
                 return await resp.text()
 
     @property
-    def logs(self):
+    def logs(self) -> AsyncIOMotorCollection:
         return self.db.logs
 
     async def setup_indexes(self):
@@ -467,6 +467,10 @@ class MongoDBClient(ApiClient):
             sys.exit(0)
 
         super().__init__(bot, db)
+
+    @property
+    def logs(self) -> AsyncIOMotorCollection:
+        return self.db.logs
 
     async def setup_indexes(self):
         """Setup text indexes so we can use the $search operator"""

@@ -79,9 +79,35 @@ class Thread:
         self._dm_menu_msg_id = None
         self._dm_menu_channel_id = None
         # --- SNOOZE STATE ---
-        self.snoozed = False  # True if thread is snoozed
-        self.snooze_data = None  # Dict with channel/category/position/messages for restoration
-        self.log_key = None  # Ensure log_key always exists
+        self.snoozed: bool = False  # True if thread is snoozed
+        self.log_key: str | None = None  # Ensure log_key always exists
+        class _SnoozeMessageData(typing.TypedDict, total=False):
+            author_id: int
+            content: str
+            attachments: list[str]
+            embeds: list[dict[str, typing.Any]]
+            created_at: str
+            type: typing.Optional[str]
+            author_name: typing.Optional[str]
+            author_avatar: typing.Optional[str]
+
+        class _SnoozeData(typing.TypedDict, total=False):
+            category_id: typing.Optional[int]
+            position: int
+            name: str
+            topic: typing.Optional[str]
+            slowmode_delay: int
+            nsfw: bool
+            overwrites: list[tuple[int, dict[str, typing.Any]]]
+            messages: list[_SnoozeMessageData]
+            snoozed_by: typing.Optional[int]
+            snooze_command: typing.Optional[str]
+            log_key: typing.Optional[str]
+            snooze_start: datetime
+            snooze_for: typing.Any
+            moved: bool
+
+        self.snooze_data: typing.Optional[_SnoozeData] = None # Dict with channel/category/position/messages for restoration
         # --- UNSNOOZE COMMAND QUEUE ---
         self._unsnoozing = False  # True while restore_from_snooze is running
         self._command_queue = []  # Queue of (ctx, command) tuples; close commands always last
@@ -155,7 +181,7 @@ class Thread:
             for i in self.wait_tasks:
                 i.cancel()
 
-    async def snooze(self, moderator=None, command_used=None, snooze_for=None):
+    async def snooze(self, moderator: discord.User|discord.Member=None, command_used=None, snooze_for=None, ignored_message_ids: set[int]=None ):
         """
         Save channel/category/position/messages to DB, mark as snoozed.
         Behavior is configurable:
@@ -202,6 +228,13 @@ class Thread:
                     self.log_key = log_entry["key"]
 
         now = datetime.now(timezone.utc)
+
+        messages = []
+
+        async for m in channel.history(limit=None, oldest_first=True):
+            if m.id not in ignored_message_ids:
+                messages.append(m)
+
         self.snooze_data = {
             "category_id": channel.category_id,
             "position": channel.position,
@@ -240,18 +273,18 @@ class Thread:
                         else m.author.display_avatar.url if m.author != self.bot.user else None
                     ),
                 }
-                async for m in channel.history(limit=None, oldest_first=True)
+                for m in messages
             ],
-            "snoozed_by": getattr(moderator, "name", None) if moderator else None,
+            "snoozed_by": getattr(moderator, "id", None) if moderator else None,
             "snooze_command": command_used,
             "log_key": self.log_key,
-            "snooze_start": now.isoformat(),
+            "snooze_start": now,
             "snooze_for": snooze_for,
         }
         self.snoozed = True
         # Save to DB (robust: try recipient.id, then channel_id)
         result = await self.bot.api.logs.update_one(
-            {"recipient.id": str(self.id)},
+            {"recipient.id": str(self.id), "_id": self._id},
             {"$set": {"snoozed": True, "snooze_data": self.snooze_data}},
         )
         if result.modified_count == 0 and self.channel:
@@ -259,9 +292,8 @@ class Thread:
                 {"channel_id": str(self.channel.id)},
                 {"$set": {"snoozed": True, "snooze_data": self.snooze_data}},
             )
-        import logging
 
-        logging.info(f"[SNOOZE] DB update result: {result.modified_count}")
+        logger.debug(f"DB update result: {result.modified_count}")
 
         # Dispatch thread_snoozed event for plugins
         self.bot.dispatch("thread_snoozed", self, moderator, snooze_for)
@@ -336,7 +368,7 @@ class Thread:
             self._channel = None
         return True
 
-    async def restore_from_snooze(self):
+    async def restore_from_snooze(self) -> bool:
         """
         Restore a snoozed thread.
         - If channel was deleted (delete behavior), recreate and replay messages.
@@ -352,10 +384,9 @@ class Thread:
         self._unsnoozing = True
 
         if not self.snooze_data or not isinstance(self.snooze_data, dict):
-            import logging
 
-            logging.warning(
-                f"[UNSNOOZE] Tried to restore thread {self.id} but snooze_data is None or not a dict."
+            logger.warning(
+                f"Tried to restore thread {self.id} but snooze_data is None or not a dict."
             )
             self._unsnoozing = False
             return False
@@ -379,6 +410,31 @@ class Thread:
 
         # Default: assume we'll need to recreate
         channel: typing.Optional[discord.TextChannel] = None
+
+        async def _recreate_channel(reason: str, error_log: str) -> typing.Optional[discord.TextChannel]:
+            try:
+                ow_map: dict = {}
+                for role_id, perm_values in self.snooze_data.get("overwrites", []) or []:
+                    target = guild.get_role(role_id) or guild.get_member(role_id)
+                    if target is None:
+                        continue
+                    ow_map[target] = discord.PermissionOverwrite(**perm_values)
+
+                recreated = await guild.create_text_channel(
+                    name=self.snooze_data.get("name") or f"thread-{self.id}",
+                    category=orig_category,
+                    overwrites=ow_map or {},
+                    position=self.snooze_data.get("position"),
+                    topic=self.snooze_data.get("topic"),
+                    slowmode_delay=self.snooze_data.get("slowmode_delay") or 0,
+                    nsfw=bool(self.snooze_data.get("nsfw")),
+                    reason=reason,
+                )
+                self._channel = recreated
+                return recreated
+            except Exception:
+                logger.error(error_log, exc_info=True)
+                return None
 
         # If move-behavior and channel still exists, move it back and restore overwrites
         if behavior == "move" and isinstance(self.channel, discord.TextChannel):
@@ -408,28 +464,11 @@ class Thread:
 
         # If we couldn't move back (or behavior=delete), recreate the channel
         if channel is None:
-            try:
-                ow_map: dict = {}
-                for role_id, perm_values in self.snooze_data.get("overwrites", []):
-                    target = guild.get_role(role_id) or guild.get_member(role_id)
-                    if target is None:
-                        continue
-                    ow_map[target] = discord.PermissionOverwrite(**perm_values)
-
-                channel = await guild.create_text_channel(
-                    name=self.snooze_data.get("name") or f"thread-{self.id}",
-                    category=orig_category,
-                    # discord.py expects a dict for overwrites; use empty dict if none
-                    overwrites=ow_map or {},
-                    position=self.snooze_data.get("position"),
-                    topic=self.snooze_data.get("topic"),
-                    slowmode_delay=self.snooze_data.get("slowmode_delay") or 0,
-                    nsfw=bool(self.snooze_data.get("nsfw")),
-                    reason="Thread unsnoozed/restored (recreated)",
-                )
-                self._channel = channel
-            except Exception:
-                logger.error("Failed to recreate thread channel during unsnooze.", exc_info=True)
+            channel = await _recreate_channel(
+                "Thread unsnoozed/restored (recreated)",
+                "Failed to recreate thread channel during unsnooze.",
+            )
+            if channel is None:
                 return False
 
         # Helper to safely send to thread channel, recreating once if deleted
@@ -438,37 +477,54 @@ class Thread:
             try:
                 return await channel.send(content=content, embeds=embeds, allowed_mentions=allowed_mentions)
             except discord.NotFound:
-                # Channel was deleted between restore and send; try to recreate once
+                channel = await _recreate_channel(
+                    "Thread unsnoozed/restored (recreated after NotFound)",
+                    "Failed to recreate channel during unsnooze send.",
+                )
+                if channel is None:
+                    return None
+                return await channel.send(
+                    content=content,
+                    embeds=embeds,
+                    allowed_mentions=allowed_mentions,
+                )
+
+        # Send a message as a webhook with a custom user
+        # must include user info
+        async def send_user_message(*, content: str=None, embeds: typing.Sequence[discord.Embed]=[], allowed_mentions: discord.AllowedMentions=None, author=None ):
+            logger.debug("Attempting to send user message via webhook for unsnooze replay.")
+            # see if there is a webhook of the name modmail_snooze
+            webhooks = await channel.webhooks()
+            modmail_snooze_webhook = None
+            for webhook in webhooks:
+                if webhook.name == "modmail_snooze":
+                    modmail_snooze_webhook = webhook
+                    break
+            if modmail_snooze_webhook is None:
+                # create the webhook if it doesn't exist
                 try:
-                    ow_map: dict = {}
-                    for role_id, perm_values in self.snooze_data.get("overwrites", []) or []:
-                        target = guild.get_role(role_id) or guild.get_member(role_id)
-                        if target is None:
-                            continue
-                        ow_map[target] = discord.PermissionOverwrite(**perm_values)
-                    channel = await guild.create_text_channel(
-                        name=(self.snooze_data.get("name") or f"thread-{self.id}"),
-                        category=orig_category,
-                        # discord.py expects a dict for overwrites; use empty dict if none
-                        overwrites=ow_map or {},
-                        position=self.snooze_data.get("position"),
-                        topic=self.snooze_data.get("topic"),
-                        slowmode_delay=self.snooze_data.get("slowmode_delay") or 0,
-                        nsfw=bool(self.snooze_data.get("nsfw")),
-                        reason="Thread unsnoozed/restored (recreated after NotFound)",
+                    modmail_snooze_webhook = await channel.create_webhook(
+                        name="modmail_snooze",
+                        reason="Creating webhook for unsnooze message replay",
                     )
-                    self._channel = channel
-                    return await channel.send(
+                except Exception as e:
+                    logger.warning("Failed to create webhook for unsnooze message replay: %s", e)
+                    modmail_snooze_webhook = None
+            if modmail_snooze_webhook is not None:
+                try:
+                    await modmail_snooze_webhook.send(
                         content=content,
-                        embeds=embeds,
+                        embeds=embeds or [],
                         allowed_mentions=allowed_mentions,
+                        username=author.name if author else None,
+                        avatar_url=author.avatar.url if author and author.avatar else None,
+                        silent=True
                     )
                 except Exception:
-                    logger.error(
-                        "Failed to recreate channel during unsnooze send.",
-                        exc_info=True,
-                    )
-                    return None
+                    logger.warning("Failed to send user message via webhook.", exc_info=True)
+            else:
+                await _safe_send_to_channel(content=content, embeds=embeds, allowed_mentions=allowed_mentions)
+
 
         # Ensure genesis message exists; always present after unsnooze
         genesis_already_sent = False
@@ -669,16 +725,24 @@ class Thread:
                         )
                     else:
                         # Plain-text path (no embeds): prefix with username and user id
-                        header = f"**{username} ({user_id})**"
-                        body = content or ""
-                        if attachments and not body:
-                            # no content; include attachment URLs on new lines
-                            body = "\n".join(attachments)
-                        formatted = f"{header}: {body}" if body else header
-                        await _safe_send_to_channel(
-                            content=formatted,
+                        await send_user_message(
+
+                            content=content,
+                            embeds=None,
                             allowed_mentions=discord.AllowedMentions.none(),
-                    )
+                            author=author
+
+                        )
+                        # header = f"**{username} ({user_id})**"
+                        # body = content or ""
+                        # if attachments and not body:
+                        #     # no content; include attachment URLs on new lines
+                        #     body = "\n".join(attachments)
+                        # formatted = f"{header}: {body}" if body else header
+                        # await _safe_send_to_channel(
+                        #     content=formatted,
+                        #     allowed_mentions=discord.AllowedMentions.none(),
+                        #     )
                 else:
                     # Recipient message: include attachment URLs if content is empty
                     # When no embeds, prefix plain text with username and user id
@@ -749,6 +813,10 @@ class Thread:
         snoozed_by = snooze_data_for_notify.get("snoozed_by") if snooze_data_for_notify else None
         snooze_command = snooze_data_for_notify.get("snooze_command") if snooze_data_for_notify else None
         if snoozed_by or snooze_command:
+            # TODO make this an embed
+            # embed = discord.Embed(title="Thread Unsnoozed" color=self.bot.main_color)
+            # if snoozed_by:
+
             info = f"Snoozed by: {snoozed_by or 'Unknown'} | Command: {snooze_command or '?snooze'}"
             await channel.send(info, allowed_mentions=discord.AllowedMentions.none())
 
@@ -2409,9 +2477,9 @@ class ThreadManager:
     async def find(
         self,
         *,
-        recipient: typing.Union[discord.Member, discord.User] = None,
-        channel: discord.TextChannel = None,
-        recipient_id: int = None,
+        recipient: discord.Member | discord.User | None = None,
+        channel: discord.TextChannel | None = None,
+        recipient_id: int | None = None,
     ) -> typing.Optional[Thread]:
         """Finds a thread from cache or from discord channel topics."""
         if recipient is None and channel is not None and isinstance(channel, discord.TextChannel):

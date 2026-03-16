@@ -10,9 +10,10 @@ from dateutil import parser
 from discord.ext import commands
 from discord.ext import tasks
 from discord.ext.commands.view import StringView
-from discord.ext.commands.cooldowns import BucketType
+from discord.ext.commands.cooldowns import BucketType, Context
 from discord.ext.commands.view import StringView
 
+from bot import ModmailBot
 from core import blocklist, checks
 from core.blocklist import BlockType
 from core.models import DMDisabled, PermissionLevel, SimilarCategoryConverter, getLogger
@@ -28,9 +29,23 @@ class Modmail(commands.Cog):
     """Commands directly related to Modmail functionality."""
 
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: ModmailBot = bot
         self._snoozed_cache = []
         self._auto_unsnooze_task = self.bot.loop.create_task(self.auto_unsnooze_task())
+
+    @staticmethod
+    def _to_utc_datetime(value):
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        if isinstance(value, str):
+            try:
+                parsed = parser.isoparse(value)
+            except (TypeError, ValueError):
+                return None
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return None
 
     async def auto_unsnooze_task(self):
         await self.bot.wait_until_ready()
@@ -41,7 +56,11 @@ class Modmail(commands.Cog):
                 # Query DB every 2 minutes
                 if (now.timestamp() - last_db_query) > 120:
                     snoozed_threads = await self.bot.api.logs.find(
-                        {"snooze_until": {"$gte": now.isoformat()}}
+                        {
+                            "$or": [
+                                {"snooze_until": {"$gte": now}},
+                            ]
+                        }
                     ).to_list(None)
                     self._snoozed_cache = snoozed_threads or []
                     last_db_query = now.timestamp()
@@ -54,9 +73,8 @@ class Modmail(commands.Cog):
                         continue
                     thread_id = int(recipient.get("id"))
                     if snooze_until:
-                        try:
-                            dt = parser.isoparse(snooze_until)
-                        except Exception:
+                        dt = self._to_utc_datetime(snooze_until)
+                        if dt is None:
                             continue
                         if now >= dt:
                             to_unsnooze.append(thread_data)
@@ -70,7 +88,7 @@ class Modmail(commands.Cog):
                     )
                     if thread and thread.snoozed:
                         await thread.restore_from_snooze()
-                        logging.info(f"[AUTO-UNSNOOZE] Thread {thread_id} auto-unsnoozed.")
+                        logger.info(f"Thread {thread_id} auto-unsnoozed.")
                         try:
                             channel = thread.channel
                             if channel:
@@ -82,7 +100,7 @@ class Modmail(commands.Cog):
                             )
                         self._snoozed_cache.remove(thread_data)
             except Exception as e:
-                logging.error(f"Error in auto_unsnooze_task: {e}")
+                logger.error(f"Error in auto_unsnooze_task: {e}")
             await asyncio.sleep(10)
 
     def _resolve_user(self, user_str):
@@ -1711,7 +1729,7 @@ class Modmail(commands.Cog):
         try:
             await ctx.message.delete(delay=3)
         except (discord.Forbidden, discord.NotFound) as e:
-            logger.debug(f"Failed to delete note command message: {e}")
+            logger.error(f"Failed to delete note command message: {e}")
 
     @commands.command()
     @checks.has_permissions(PermissionLevel.SUPPORTER)
@@ -2439,7 +2457,7 @@ class Modmail(commands.Cog):
     @commands.command(usage="[duration]")
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     @checks.thread_only()
-    async def snooze(self, ctx, *, duration: UserFriendlyTime = None):
+    async def snooze(self, ctx: commands.Context, *, duration: UserFriendlyTime = None):
         """
         Snooze this thread. Behavior depends on config:
         - delete (default): deletes the channel and restores it later
@@ -2447,10 +2465,10 @@ class Modmail(commands.Cog):
             Optionally specify a duration, e.g. 'snooze 2d' for 2 days.
             Uses config: snooze_default_duration, snooze_title, snooze_text
         """
-        thread = ctx.thread
+        thread: Thread = ctx.thread
         if thread.snoozed:
             await ctx.send("This thread is already snoozed.")
-            logging.info(f"[SNOOZE] Thread for {getattr(thread.recipient, 'id', None)} already snoozed.")
+            logger.info(f"[SNOOZE] Thread for {getattr(thread.recipient, 'id', None)} already snoozed.")
             return
         # Default snooze duration with safe fallback
         try:
@@ -2476,7 +2494,7 @@ class Modmail(commands.Cog):
             # Auto-create snoozed category if missing
             if not isinstance(target_category, discord.CategoryChannel):
                 try:
-                    logging.info("Auto-creating snoozed category for move-based snoozing.")
+                    logger.info("Auto-creating snoozed category for move-based snoozing.")
                     # Hide category by default; only bot can view/manage
                     overwrites = {
                         self.bot.modmail_guild.default_role: discord.PermissionOverwrite(view_channel=False)
@@ -2502,13 +2520,13 @@ class Modmail(commands.Cog):
                         await self.bot.config.set("snoozed_category_id", target_category.id)
                         await self.bot.config.update()
                     except Exception as e:
-                        logging.warning("Failed to persist snoozed_category_id: %s", e)
+                        logger.error("Failed to persist snoozed_category_id: %s", e)
                         try:
                             await ctx.send(
                                 "⚠️ Created snoozed category but failed to save it to config. Please set `snoozed_category_id` manually."
                             )
                         except Exception as e:
-                            logging.info(
+                            logger.error(
                                 "Failed to notify about snoozed category persistence issue: %s",
                                 e,
                             )
@@ -2533,7 +2551,7 @@ class Modmail(commands.Cog):
                             color=self.bot.error_color,
                         )
                     )
-                    logging.warning("Failed to auto-create snoozed category: %s", e)
+                    logger.error("Failed to auto-create snoozed category: %s", e)
             # Capacity check after ensuring category exists
             if isinstance(target_category, discord.CategoryChannel):
                 try:
@@ -2550,18 +2568,20 @@ class Modmail(commands.Cog):
                         )
                         return
                 except Exception as e:
-                    logging.debug("Failed to check snoozed category channel count: %s", e)
+                    logger.debug("Failed to check snoozed category channel count: %s", e)
 
         # Store snooze_until timestamp for reliable auto-unsnooze
         now = datetime.now(timezone.utc)
         snooze_until = now + timedelta(seconds=snooze_for)
+        # TODO/BUG: This query is scoped only by recipient.id + open and can match the wrong log
+        # when multiple entries exist; should prefer key/channel_id/guild_id in selector.
         await self.bot.api.logs.update_one(
-            {"recipient.id": str(thread.id)},
+            {"recipient.id": str(thread.id), "open": True},
             {
                 "$set": {
-                    "snooze_start": now.isoformat(),
+                    "snooze_start": now,
                     "snooze_for": snooze_for,
-                    "snooze_until": snooze_until.isoformat(),
+                    "snooze_until": snooze_until,
                 }
             },
         )
@@ -2570,20 +2590,20 @@ class Modmail(commands.Cog):
             description=self.bot.config.get("snooze_text") or "This thread has been snoozed.",
             color=self.bot.error_color,
         )
-        await ctx.send(embed=embed)
-        ok = await thread.snooze(moderator=ctx.author, snooze_for=snooze_for)
+        cmd_message = await ctx.send(embed=embed)
+        ok = await thread.snooze(moderator=ctx.author, snooze_for=snooze_for, ignored_message_ids={cmd_message.id})
         if ok:
-            logging.info(
-                f"[SNOOZE] Thread for {getattr(thread.recipient, 'id', None)} snoozed for {snooze_for}s."
+            logger.info(
+                f"Thread for {getattr(thread.recipient, 'id', None)} snoozed for {snooze_for}s."
             )
             self.bot.threads.cache[thread.id] = thread
         else:
             await ctx.send("Failed to snooze this thread.")
-            logging.error(f"[SNOOZE] Failed to snooze thread for {getattr(thread.recipient, 'id', None)}.")
+            logger.error(f"Failed to snooze thread for {getattr(thread.recipient, 'id', None)}.")
 
     @commands.command()
     @checks.has_permissions(PermissionLevel.SUPPORTER)
-    async def unsnooze(self, ctx, *, user: str = None):
+    async def unsnooze(self, ctx: commands.Context, *, user: str = None):
         """
         Unsnooze a thread: restores the channel and replays messages.
         You can specify a user by mention or ID, or run in a thread channel to unsnooze that thread.
@@ -2591,7 +2611,7 @@ class Modmail(commands.Cog):
         """
         import discord
 
-        thread = None
+        thread: Thread = None
         user_obj = None
         if user is not None:
             user_id = self._resolve_user(user)
@@ -2608,18 +2628,18 @@ class Modmail(commands.Cog):
             if user_obj:
                 thread = await self.bot.threads.find(recipient=user_obj)
             if not thread:
-                await ctx.send(f"[DEBUG] No thread found for user {user} (obj: {user_obj}).")
-                logging.warning(f"[UNSNOOZE] No thread found for user {user} (obj: {user_obj})")
+                await ctx.send(f"No thread found for user {user} (obj: {user_obj}).")
+                logger.warning(f"[UNSNOOZE] No thread found for user {user} (obj: {user_obj})")
                 return
         elif hasattr(ctx, "thread"):
             thread = ctx.thread
         else:
             await ctx.send("This is not a Modmail thread.")
-            logging.warning("[UNSNOOZE] Not a Modmail thread context.")
+            logger.debug("Snooze command ran without thread context")
             return
         if not thread.snoozed:
             await ctx.send("This thread is not snoozed.")
-            logging.info(f"[UNSNOOZE] Thread for {getattr(thread.recipient, 'id', None)} is not snoozed.")
+            logger.info(f"Tried to unsnooze non-snoozed Thread for {getattr(thread.recipient, 'id', None)}")
             return
 
         # Manually fetch snooze_data if the thread object doesn't have it
@@ -2634,16 +2654,16 @@ class Modmail(commands.Cog):
             await ctx.send(
                 self.bot.config.get("unsnooze_text") or "This thread has been unsnoozed and restored."
             )
-            logging.info(f"[UNSNOOZE] Thread for {getattr(thread.recipient, 'id', None)} unsnoozed.")
+            logger.info(f"{getattr(thread.recipient, 'id', None)} unsnoozed thread")
         else:
             await ctx.send("Failed to unsnooze this thread.")
-            logging.error(
-                f"[UNSNOOZE] Failed to unsnooze thread for {getattr(thread.recipient, 'id', None)}."
+            logger.error(
+                f"unsnooze command failed to unsnooze thread for {getattr(thread.recipient, 'id', None)}"
             )
 
     @commands.command()
     @checks.has_permissions(PermissionLevel.SUPPORTER)
-    async def snoozed(self, ctx):
+    async def snoozed(self, ctx: commands.Context):
         """
         List all currently snoozed threads/users.
         """
@@ -2652,6 +2672,8 @@ class Modmail(commands.Cog):
             await ctx.send("No threads are currently snoozed.")
             return
 
+
+        # TODO this should really be a
         lines = []
         now = datetime.now(timezone.utc)
         for thread in snoozed_threads:
@@ -2660,32 +2682,33 @@ class Modmail(commands.Cog):
 
             since_str = "?"
             until_str = "?"
+            since_dt = None
 
             if thread.snooze_data:
                 since = thread.snooze_data.get("snooze_start")
                 duration = thread.snooze_data.get("snooze_for")
 
                 if since:
-                    try:
-                        since_dt = datetime.fromisoformat(since)
+                    since_dt = self._to_utc_datetime(since)
+                    if since_dt is not None:
                         since_str = f"<t:{int(since_dt.timestamp())}:R>"  # Discord relative timestamp
-                    except (ValueError, TypeError) as e:
-                        logging.warning(f"[SNOOZED] Invalid snooze_start for {user_id}: {since} ({e})")
+                    else:
+                        logger.warning(f"Invalid snooze_start for {user_id}: {since}")
                 else:
-                    logging.warning(f"[SNOOZED] Missing snooze_start for {user_id}")
+                    logger.warning(f" Missing snooze_start for {user_id}")
 
-                if duration and since_str != "?":
+                if duration is not None and since_dt is not None:
                     try:
-                        until_dt = datetime.fromisoformat(since) + timedelta(seconds=int(duration))
+                        until_dt = since_dt + timedelta(seconds=int(duration))
                         until_str = f"<t:{int(until_dt.timestamp())}:R>"
                     except (ValueError, TypeError) as e:
-                        logging.warning(
-                            f"[SNOOZED] Invalid until time for {user_id}: {since} + {duration} ({e})"
+                        logger.warning(
+                            f"Invalid until time for {user_id}: {since} + {duration} ({e})"
                         )
 
             lines.append(f"- {user} (`{user_id}`) since {since_str}, until {until_str}")
 
-        await ctx.send("Snoozed threads:\n" + "\n".join(lines))
+        await ctx.send("**Snoozed threads:**\n" + "\n".join(lines))
 
     async def cog_load(self):
         self.snooze_auto_unsnooze.start()
@@ -2693,18 +2716,20 @@ class Modmail(commands.Cog):
     @tasks.loop(seconds=10)
     async def snooze_auto_unsnooze(self):
         now = datetime.now(timezone.utc)
-        snoozed = await self.bot.api.logs.find({"snoozed": True}).to_list(None)
+        snoozed = await self.bot.api.logs.find({"snoozed": True, "open": True, "snooze_until": {"$lte": now}}).to_list(None)
         for entry in snoozed:
             snooze_until = entry.get("snooze_until")
             if snooze_until:
                 try:
-                    until_dt = datetime.fromisoformat(snooze_until)
+                    until_dt = self._to_utc_datetime(snooze_until)
+                    if until_dt is None:
+                        continue
                     if now >= until_dt:
                         thread = await self.bot.threads.find(recipient_id=int(entry["recipient"]["id"]))
                         if thread and thread.snoozed:
                             await thread.restore_from_snooze()
                 except (ValueError, TypeError) as e:
-                    logger.debug(
+                    logger.error(
                         "Failed parsing snooze_until timestamp for auto-unsnooze loop: %s",
                         e,
                     )
@@ -2716,6 +2741,7 @@ class Modmail(commands.Cog):
     async def process_dm_modmail(self, message: discord.Message) -> None:
         # ... existing code ...
         # Before processing, check if thread is snoozed and auto-unsnooze
+        logger.warn("process_dm_modmail called!")
         thread = await self.threads.find(recipient=message.author)
         if thread and thread.snoozed:
             await thread.restore_from_snooze()
@@ -2725,7 +2751,7 @@ class Modmail(commands.Cog):
 
     @commands.command()
     @checks.has_permissions(PermissionLevel.OWNER)
-    async def clearsnoozed(self, ctx):
+    async def clearsnoozed(self, ctx: commands.Context):
         """
         List all snoozed threads and ask for confirmation before clearing (unsnoozing) all of them.
         Only proceed if the user confirms.
@@ -2739,7 +2765,7 @@ class Modmail(commands.Cog):
             user = entry.get("recipient", {}).get("name", "Unknown")
             user_id = entry.get("recipient", {}).get("id", "?")
             lines.append(f"- {user} (`{user_id}`)")
-        msg = await ctx.send(
+        await ctx.send(
             "The following threads are currently snoozed and will be unsnoozed if you confirm:\n"
             + "\n".join(lines)
             + "\n\nType `yes` to confirm, or anything else to cancel."
