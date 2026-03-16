@@ -1,16 +1,14 @@
 import asyncio
+import logging
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from itertools import zip_longest
 from typing import List, Literal, Optional, Tuple, Union
-import logging
 
 import discord
 from dateutil import parser
-from discord.ext import commands
-from discord.ext import tasks
-from discord.ext.commands.view import StringView
-from discord.ext.commands.cooldowns import BucketType, Context
+from discord.ext import commands, tasks
+from discord.ext.commands.cooldowns import BucketType
 from discord.ext.commands.view import StringView
 
 from bot import ModmailBot

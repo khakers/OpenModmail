@@ -1,32 +1,30 @@
 import asyncio
 import copy
-import base64
-import functools
 import io
 import re
 import time
 import typing
 import warnings
-from datetime import timedelta, datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import discord
 import isodate
 from discord.ext import commands
-
 from discord.ext.commands import CommandError, MissingRequiredArgument
 from discord.types.user import PartialUser as PartialUserPayload, User as UserPayload
-from lottie.importers import importers as l_importers
 from lottie.exporters import exporters as l_exporters
+from lottie.importers import importers as l_importers
 
-from core.models import DMDisabled, DummyMessage, PermissionLevel, getLogger
 from core import checks
+from core.models import DMDisabled, DummyMessage, PermissionLevel, getLogger
 from core.utils import (
     AcceptButton,
     ConfirmThreadCreationView,
     DenyButton,
     DummyParam,
     create_thread_channel,
+    extract_forwarded_content,
     get_joint_id,
     get_top_role,
     is_image_url,
@@ -34,14 +32,6 @@ from core.utils import (
     match_user_id,
     parse_channel_topic,
     truncate,
-    get_top_role,
-    create_thread_channel,
-    get_joint_id,
-    AcceptButton,
-    DenyButton,
-    ConfirmThreadCreationView,
-    DummyParam,
-    extract_forwarded_content,
 )
 
 logger = getLogger(__name__)
