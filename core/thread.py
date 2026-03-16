@@ -34,6 +34,9 @@ from core.utils import (
     truncate,
 )
 
+if typing.TYPE_CHECKING:
+    from bot import ModmailBot
+
 logger = getLogger(__name__)
 
 
@@ -44,8 +47,8 @@ class Thread:
         self,
         manager: "ThreadManager",
         recipient: typing.Union[discord.Member, discord.User, int],
-        channel: typing.Union[discord.DMChannel, discord.TextChannel] = None,
-        other_recipients: typing.List[typing.Union[discord.Member, discord.User]] = None,
+        channel: discord.DMChannel | discord.TextChannel | None = None,
+        other_recipients: typing.List[typing.Union[discord.Member, discord.User]] | None = None,
     ):
         self.manager = manager
         self.bot = manager.bot
@@ -1747,13 +1750,14 @@ class Thread:
                     guild.id if hasattr(guild, "id") else guild,
                 )
         else:
-            return await message.channel.send(
+            await message.channel.send(
                 embed=discord.Embed(
                     color=self.bot.error_color,
                     description="Your message could not be delivered since "
                     "the recipient shares no servers with the bot.",
                 )
             )
+            return
 
         user_msg_tasks = []
         tasks = []
@@ -2447,7 +2451,7 @@ class ThreadManager:
     """Class that handles storing, finding and creating Modmail threads."""
 
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: "ModmailBot" = bot
         self.cache = {}
         self.closing = set()
 

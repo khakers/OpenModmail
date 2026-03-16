@@ -673,8 +673,8 @@ class MongoDBClient(ApiClient):
         self,
         message: Message,
         *,
-        message_id: str = "",
-        channel_id: str = "",
+        message_id: str | int = "",
+        channel_id: str | int = "",
         type_: str = "thread_message",
     ) -> dict:
         channel_id = str(channel_id) or str(message.channel.id)
@@ -697,12 +697,39 @@ class MongoDBClient(ApiClient):
                     "id": a.id,
                     "filename": a.filename,
                     # In previous versions this was true for both videos and images
-                    "is_image": a.content_type.startswith("image/"),
+                    "is_image": a.content_type and a.content_type.startswith("image/"),
                     "size": a.size,
                     "url": a.url,
                     "content_type": a.content_type,
                 }
                 for a in message.attachments
+            ],
+            "messageReference": {
+                "message_id": message.reference.message_id,
+                "channel_id": message.reference.channel_id,
+                "guild_id": message.reference.guild_id,
+                "type": message.reference.type.name,
+            } if message.reference else None,
+            "messageSnapshots": [
+                {
+                    "type": m.type.name,
+                    "content": m.content,
+                    "attachments": [
+                        {
+                            "id": a.id,
+                            "filename": a.filename,
+                            # In previous versions this was true for both videos and images
+                            "is_image": a.content_type and a.content_type.startswith("image/"),
+                            "size": a.size,
+                            "url": a.url,
+                            "content_type": a.content_type,
+                        }
+                        for a in m.attachments
+                    ],
+                    "timestamp": m.created_at,
+                    "editedTimestamp": m.edited_at,
+                }
+                for m in message.message_snapshots
             ],
         }
 
