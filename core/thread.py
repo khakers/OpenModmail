@@ -52,6 +52,7 @@ class Thread:
     ):
         self.manager = manager
         self.bot = manager.bot
+        self._key: str
         if isinstance(recipient, int):
             self._id = recipient
             self._recipient = None
@@ -129,6 +130,10 @@ class Thread:
     @property
     def id(self) -> int:
         return self._id
+
+    @property
+    def key(self):
+        return self._key
 
     @property
     def channel(self) -> typing.Union[discord.TextChannel, discord.DMChannel]:
@@ -898,11 +903,11 @@ class Thread:
                 self._channel = channel
 
         try:
-            log_url, log_data = await asyncio.gather(
+            log_key, log_data = await asyncio.gather(
                 self.bot.api.create_log_entry(recipient, channel, creator or recipient),
                 self.bot.api.get_user_logs(recipient.id),
             )
-
+            self._key = log_key
             log_count = sum(1 for log in log_data if not log["open"])
         except Exception:
             logger.error("An error occurred while posting logs to the database.", exc_info=True)

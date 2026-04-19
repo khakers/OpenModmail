@@ -430,7 +430,7 @@ class _SafeTyping:
     when typing is disabled or experiencing outages.
     """
 
-    def __init__(self, target):
+    def __init__(self, target: typing.Union[commands.Context, discord.abc.Messageable]):
         # target can be a Context or any Messageable (channel/DM/user)
         self._target = target
         self._cm = None
@@ -449,7 +449,7 @@ class _SafeTyping:
                 return await self._cm.__aexit__(exc_type, exc, tb)
 
 
-def safe_typing(target):
+def safe_typing(target: typing.Union[commands.Context, discord.abc.Messageable]) -> _SafeTyping:
     return _SafeTyping(target)
 
 

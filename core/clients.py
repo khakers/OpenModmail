@@ -636,7 +636,7 @@ class MongoDBClient(ApiClient):
         prefix = self.bot.config["log_url_prefix"].strip("/")
         if prefix == "NONE":
             prefix = ""
-        return f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{key}"
+        return key
 
     async def delete_log_entry(self, key: str) -> bool:
         result = await self.logs.delete_one({"key": key})
@@ -792,7 +792,7 @@ class MongoDBClient(ApiClient):
             {"messages": {"$slice": 5}},
         ).to_list(limit)
 
-    async def create_note(self, recipient: Member, message: Message, message_id: Union[int, str]):
+    async def create_note(self, recipient: Member | discord.User, message: Message, message_id: Union[int, str]):
         await self.db.notes.insert_one(
             {
                 "recipient": str(recipient.id),
@@ -809,7 +809,7 @@ class MongoDBClient(ApiClient):
             }
         )
 
-    async def find_notes(self, recipient: Member):
+    async def find_notes(self, recipient: Member | discord.User):
         return await self.db.notes.find({"recipient": str(recipient.id)}).to_list(None)
 
     async def update_note_ids(self, ids: dict):

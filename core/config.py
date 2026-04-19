@@ -230,7 +230,6 @@ class ConfigManager:
         "thread_creation_menu_embed_color",
     }
 
-    time_deltas = {"account_age", "guild_age", "thread_auto_close", "thread_cooldown"}
     time_deltas = {
         "account_age",
         "guild_age",

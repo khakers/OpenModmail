@@ -1,6 +1,5 @@
 __version__ = "5.0.0-alpha.1"
 
-
 import asyncio
 import copy
 import hashlib
@@ -10,12 +9,12 @@ import string
 import sys
 import typing
 from datetime import datetime, timedelta, timezone
-from subprocess import PIPE
 from types import SimpleNamespace
+from typing import Optional
 
 import discord
 import isodate
-from aiohttp import ClientResponseError, ClientSession
+from aiohttp import ClientSession
 from dateutil import parser
 from discord.ext import commands, tasks
 from discord.ext.commands.view import StringView
@@ -33,21 +32,19 @@ except ImportError:
     pass
 
 from core import checks
-from core.changelog import Changelog
-from core.clients import ApiClient, MongoDBClient, PluginDatabaseClient
+from core.clients import MongoDBClient, PluginDatabaseClient
 from core.config import ConfigManager
 from core.models import (
     DMDisabled,
     HostingMethod,
-    InvalidConfigError,
     PermissionLevel,
     SafeFormatter,
     configure_logging,
     getLogger,
 )
-from core.thread import ThreadManager
+from core.thread import Thread, ThreadManager
 from core.time import human_timedelta
-from core.utils import human_join, normalize_alias, parse_alias, truncate, tryint, extract_forwarded_content
+from core.utils import extract_forwarded_content, human_join, normalize_alias, parse_alias, truncate, tryint
 
 logger = getLogger(__name__)
 
@@ -61,7 +58,8 @@ if sys.platform == "win32":
     except AttributeError:
         logger.error("Failed to use WindowsProactorEventLoopPolicy.", exc_info=True)
 
-
+class ModmailCommandContext(commands.Context["ModmailBot"]):
+    thread: Optional[Thread]
 class ModmailBot(commands.Bot):
     def __init__(self):
         self.config = ConfigManager(self)
@@ -1416,19 +1414,20 @@ class ModmailBot(commands.Bot):
                 ctx.command.checks = old_checks
                 continue
 
-    async def get_context(self, message, *, cls=commands.Context):
+    async def get_context(self, message, *, cls=ModmailCommandContext):
         """
         Returns the invocation context from the message.
         Supports getting the prefix from database.
         """
 
         view = StringView(message.content)
-        ctx = cls(prefix=self.prefix, view=view, bot=self, message=message)
+        ctx: ModmailCommandContext = cls(prefix=self.prefix, view=view, bot=self, message=message)
 
         if message.author.id == self.user.id:
             return ctx
 
-        ctx.thread = await self.threads.find(channel=ctx.channel)
+        if isinstance(ctx.channel, discord.TextChannel):
+            ctx.thread = await self.threads.find(channel=ctx.channel)
 
         prefixes = await self.get_prefix()
 
