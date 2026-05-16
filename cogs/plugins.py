@@ -20,7 +20,7 @@ from packaging.version import Version
 from core import checks
 from core.models import PermissionLevel, getLogger
 from core.paginator import EmbedPaginatorSession
-from core.utils import trigger_typing, truncate
+from core.utils import trigger_typing, truncate, safe_typing
 
 logger = getLogger(__name__)
 
@@ -113,7 +113,7 @@ class Plugins(commands.Cog):
     These addons could have a range of features from moderation to simply
     making your life as a moderator easier!
     Learn how to create a plugin yourself here:
-    https://github.com/modmail-dev/modmail/wiki/Plugins
+    https://docs.modmail.dev/usage-guide/plugins
     """
 
     def __init__(self, bot):
@@ -272,7 +272,11 @@ class Plugins(commands.Cog):
 
             if stderr:
                 logger.debug("[stderr]\n%s.", stderr.decode())
-                logger.error("Failed to download requirements for %s.", plugin.ext_string, exc_info=True)
+                logger.error(
+                    "Failed to download requirements for %s.",
+                    plugin.ext_string,
+                    exc_info=True,
+                )
                 raise InvalidPluginError(f"Unable to download requirements: ```\n{stderr.decode()}\n```")
 
             if os.path.exists(USER_SITE):
@@ -349,7 +353,7 @@ class Plugins(commands.Cog):
                 embed = discord.Embed(
                     description="Invalid plugin name, double check the plugin name "
                     "or use one of the following formats: "
-                    "username/repo/plugin-name, username/repo/plugin-name@branch, local/plugin-name.",
+                    "username/repo/plugin-name, username/repo/plugin-name@branch, @local/plugin-name.",
                     color=self.bot.error_color,
                 )
                 await ctx.send(embed=embed)
@@ -374,7 +378,7 @@ class Plugins(commands.Cog):
 
         `plugin_name` can be the name of the plugin found in `{prefix}plugin registry`,
         or a direct reference to a GitHub hosted plugin (in the format `user/repo/name[@branch]`)
-        or `local/name` for local plugins.
+        or `@local/name` for local plugins.
         """
 
         plugin = await self.parse_user_input(ctx, plugin_name, check_version=True)
@@ -382,7 +386,10 @@ class Plugins(commands.Cog):
             return
 
         if str(plugin) in self.bot.config["plugins"]:
-            embed = discord.Embed(description="This plugin is already installed.", color=self.bot.error_color)
+            embed = discord.Embed(
+                description="This plugin is already installed.",
+                color=self.bot.error_color,
+            )
             return await ctx.send(embed=embed)
 
         if plugin.name in self.bot.cogs:
@@ -458,7 +465,7 @@ class Plugins(commands.Cog):
         Remove an installed plugin of the bot.
 
         `plugin_name` can be the name of the plugin found in `{prefix}plugin registry`, or a direct reference
-        to a GitHub hosted plugin (in the format `user/repo/name[@branch]`) or `local/name` for local plugins.
+        to a GitHub hosted plugin (in the format `user/repo/name[@branch]`) or `@local/name` for local plugins.
         """
         plugin = await self.parse_user_input(ctx, plugin_name)
         if plugin is None:
@@ -500,7 +507,8 @@ class Plugins(commands.Cog):
                 pass  # dir not empty
 
         embed = discord.Embed(
-            description="The plugin is successfully uninstalled.", color=self.bot.main_color
+            description="The plugin is successfully uninstalled.",
+            color=self.bot.main_color,
         )
         await ctx.send(embed=embed)
 
@@ -514,9 +522,10 @@ class Plugins(commands.Cog):
             embed = discord.Embed(description="Plugin is not installed.", color=self.bot.error_color)
             return await ctx.send(embed=embed)
 
-        async with ctx.typing():
+        async with safe_typing(ctx):
             embed = discord.Embed(
-                description=f"Successfully updated {plugin.name}.", color=self.bot.main_color
+                description=f"Successfully updated {plugin.name}.",
+                color=self.bot.main_color,
             )
             await self.download_plugin(plugin, force=True)
             if self.bot.config.get("enable_plugins"):
@@ -547,7 +556,7 @@ class Plugins(commands.Cog):
         Update a plugin for the bot.
 
         `plugin_name` can be the name of the plugin found in `{prefix}plugin registry`, or a direct reference
-        to a GitHub hosted plugin (in the format `user/repo/name[@branch]`) or `local/name` for local plugins.
+        to a GitHub hosted plugin (in the format `user/repo/name[@branch]`) or `@local/name` for local plugins.
 
         To update all plugins, do `{prefix}plugins update`.
         """
@@ -600,7 +609,8 @@ class Plugins(commands.Cog):
                 logger.warning("Removing %s.", entry.name)
 
         embed = discord.Embed(
-            description="Successfully purged all plugins from the bot.", color=self.bot.main_color
+            description="Successfully purged all plugins from the bot.",
+            color=self.bot.main_color,
         )
         return await ctx.send(embed=embed)
 
@@ -628,7 +638,8 @@ class Plugins(commands.Cog):
 
         if not self.loaded_plugins:
             embed = discord.Embed(
-                description="There are no plugins currently loaded.", color=self.bot.error_color
+                description="There are no plugins currently loaded.",
+                color=self.bot.error_color,
             )
             return await ctx.send(embed=embed)
 
@@ -688,7 +699,10 @@ class Plugins(commands.Cog):
             matches = get_close_matches(plugin_name, self.registry.keys())
 
             if matches:
-                embed.add_field(name="Perhaps you meant:", value="\n".join(f"`{m}`" for m in matches))
+                embed.add_field(
+                    name="Perhaps you meant:",
+                    value="\n".join(f"`{m}`" for m in matches),
+                )
 
             return await ctx.send(embed=embed)
 
@@ -781,7 +795,10 @@ class Plugins(commands.Cog):
 
         for page in pages:
             embed = discord.Embed(color=self.bot.main_color, description=page)
-            embed.set_author(name="Plugin Registry", icon_url=self.bot.user.display_avatar.url)
+            embed.set_author(
+                name="Plugin Registry",
+                icon_url=self.bot.user.display_avatar.url if self.bot.user.display_avatar else None,
+            )
             embeds.append(embed)
 
         paginator = EmbedPaginatorSession(ctx, *embeds)

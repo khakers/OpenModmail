@@ -20,6 +20,40 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - Added `content_type` to attachments stored in the database.
 - `?log key <key>` to retrieve the log link and view a preview using a log key. ([PR #3196](https://github.com/modmail-dev/Modmail/pull/3196))
 - Add Forced plugins. Allows auto installing un-removable plugins via `FORCED_PLUGINS` environment variable contain a comma separate list of plugins. (GH#5)
+Commands:
+* `snooze`: Initiates a snooze action.
+* `snoozed`: Displays snoozed items.
+* `unsnooze`: Reverses the snooze action.
+* `clearsnoozed`: Clears all snoozed items.
+
+Configuration Options:
+* `max_snooze_time`: Sets the maximum duration for snooze.
+* `snooze_title`: Customizes the title for snooze notifications.
+* `snooze_text`: Customizes the text for snooze notifications.
+* `unsnooze_text`: Customizes the text for unsnooze notifications.
+* `unsnooze_notify_channel`: Specifies the channel for unsnooze notifications.
+* `thread_min_characters`: Minimum number of characters required.
+* `thread_min_characters_title`: Title shown when the message is too short.
+* `thread_min_characters_response`: Response shown to the user if their message is too short.
+* `thread_min_characters_footer`: Footer displaying the minimum required characters.
+
+* `unsnooze_history_limit`: Limits the number of messages replayed when unsnoozing (genesis message and notes are always shown).
+* `snooze_behavior`: Choose between `delete` (legacy) or `move` behavior for snoozing.
+* `snoozed_category_id`: Target category for `move` snoozing; required when `snooze_behavior` is `move`.
+* Thread-creation menu: Adds an interactive select step before a thread channel is created.
+  * Commands:
+    * `threadmenu toggle`: Enable/disable the menu.
+    * `threadmenu show`: List current top-level options.
+    * `threadmenu option add`: Interactive wizard to create an option.
+    * `threadmenu option edit/remove/show`: Manage or inspect an existing option.
+    * `threadmenu submenu create/delete/list/show`: Manage submenus.
+    * `threadmenu submenu option add/edit/remove`: Manage options inside a submenu.
+  * Configuration / Behavior:
+    * Per-option `category` targeting when creating a thread; falls back to `main_category_id` if invalid/missing.
+    * Optional selection logging (`thread_creation_menu_selection_log`) posts the chosen option in the new thread.
+    * Anonymous prompt support (`thread_creation_menu_anonymous_menu`).
+
+
 
 ### Changed
 - Changing a threads title or NSFW status immediately updates the status in the database.
@@ -41,6 +75,15 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 - `is_image` now is true only if the image is actually an image.
 - Fix contact command reporting user was blocked when they weren't.
 - Cleanup imports after removing/unloading a plugin. ([PR #3226](https://github.com/modmail-dev/Modmail/pull/3226))
+- Make Modmail keep working when typing is disabled due to an outage caused by Discord.
+- Resolved an issue where forwarded messages appeared as empty embeds.
+- Fixed internal message handling and restoration processes.
+- Eliminated duplicate logs and notes.
+- Addressed inconsistent use of `logkey` after ticket restoration.
+- Fixed issues with identifying the user who sent internal messages.
+- Solved an ancient bug where closing with words like `evening` wouldn't work.
+- Fixed the command from being included in the reply  in rare conditions.
+
 
 ### Internal
 - Add `update_title` and `update_nsfw` methods to `ApiClient` to update thread title and nsfw status in the database.
