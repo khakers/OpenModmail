@@ -58,8 +58,11 @@ if sys.platform == "win32":
     except AttributeError:
         logger.error("Failed to use WindowsProactorEventLoopPolicy.", exc_info=True)
 
+
 class ModmailCommandContext(commands.Context["ModmailBot"]):
     thread: Optional[Thread]
+
+
 class ModmailBot(commands.Bot):
     def __init__(self):
         self.config = ConfigManager(self)
@@ -171,7 +174,7 @@ class ModmailBot(commands.Bot):
         return HostingMethod.OTHER
 
     def startup(self):
-        ""
+        """"""
         logger.info(
             r"""
   ____                __  ___        __           _ __
@@ -613,6 +616,7 @@ class ModmailBot(commands.Bot):
         for log in await self.api.get_open_logs():
             if log.get("channel_id") is None or self.get_channel(int(log["channel_id"])) is None:
                 logger.debug("Unable to resolve thread with channel %s.", log["channel_id"])
+                assert self.user
                 log_data = await self.api.post_log(
                     log["channel_id"],
                     {
@@ -882,7 +886,7 @@ class ModmailBot(commands.Bot):
 
         return blocked
 
-    async def get_thread_cooldown(self, author: discord.Member):
+    async def get_thread_cooldown(self, author: discord.Member | discord.User) -> typing.Optional[str]:
         thread_cooldown = self.config.get("thread_cooldown")
         now = discord.utils.utcnow()
 
@@ -966,10 +970,13 @@ class ModmailBot(commands.Bot):
             return
         sent_emoji, blocked_emoji = await self.retrieve_emoji()
 
+        # TODO pretty sure these conditionals are completely incorrect and will never evaluate to true
+        # The enum values do not exist and messages aren't even structured like this.
         # Handle forwarded messages (Discord forwards)
         # See: https://discord.com/developers/docs/resources/message#message-reference-content-attribution-forwards
         # 1. Multi-forward (message_snapshots)
         if hasattr(message, "flags") and getattr(message.flags, "has_snapshot", False):
+            logger.debug("Received a forwarded message with snapshots from ")
             if hasattr(message, "message_snapshots") and message.message_snapshots:
                 thread = await self.threads.find(recipient=message.author)
                 if thread is None:
@@ -1038,9 +1045,12 @@ class ModmailBot(commands.Bot):
                 message.content = "[Forwarded message with no content]"
         # 2. Single-message forward (MessageType.forward)
         elif getattr(message, "type", None) == getattr(discord.MessageType, "forward", None):
+            logger.debug(
+                "Received a forwarded message from",
+            )
             # Check for message.reference and its type
-            ref = getattr(message, "reference", None)
-            if ref and getattr(ref, "type", None) == getattr(discord, "MessageReferenceType", None).forward:
+            ref = message.reference
+            if ref and ref.type == discord.MessageReferenceType.forward:
                 # Try to fetch the referenced message
                 ref_msg = None
                 try:
@@ -1081,7 +1091,8 @@ class ModmailBot(commands.Bot):
                                 "A new thread was blocked from %s due to disabled Modmail.", message.author
                             )
                             await self.add_reaction(message, blocked_emoji)
-                            return await message.channel.send(embed=embed)
+                            await message.channel.send(embed=embed)
+                            return
                         thread = await self.threads.create(message.author, message=message)
                     else:
                         if self.config["dm_disabled"] == DMDisabled.ALL_THREADS:
@@ -1098,11 +1109,12 @@ class ModmailBot(commands.Bot):
                                 "A message was blocked from %s due to disabled Modmail.", message.author
                             )
                             await self.add_reaction(message, blocked_emoji)
-                            return await message.channel.send(embed=embed)
+                            await message.channel.send(embed=embed)
+                            return
 
                     # Create a forwarded message wrapper to preserve forward info
                     class ForwardedMessage:
-                        def __init__(self, original_message, ref_message):
+                        def __init__(self, original_message: discord.Message, ref_message: discord.Message):
                             self.author = original_message.author
                             # Use the utility function to extract content or fallback to ref message content
                             extracted_content = extract_forwarded_content(original_message)
@@ -1148,7 +1160,7 @@ class ModmailBot(commands.Bot):
                 thread
                 and thread.channel
                 and isinstance(thread.channel, discord.TextChannel)
-                and self.get_channel(getattr(thread.channel, "id", None)) is None
+                and self.get_channel(thread.channel.id) is None
             ):
                 logger.info(
                     "Stale thread detected for %s (channel deleted). Purging cache entry and creating new thread.",
@@ -1192,7 +1204,8 @@ class ModmailBot(commands.Bot):
                     message.author,
                 )
                 await self.add_reaction(message, blocked_emoji)
-                return await message.channel.send(embed=embed)
+                await message.channel.send(embed=embed)
+                return
 
             thread = await self.threads.create(message.author, message=message)
             # If thread menu is enabled, thread creation is deferred until user selects an option.
@@ -1214,7 +1227,8 @@ class ModmailBot(commands.Bot):
                     message.author,
                 )
                 await self.add_reaction(message, blocked_emoji)
-                return await message.channel.send(embed=embed)
+                await message.channel.send(embed=embed)
+                return
 
         if not thread.cancelled:
             try:

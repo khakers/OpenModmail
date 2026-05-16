@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from itertools import batched
 from typing import List, Literal, Optional, Tuple, Union
@@ -26,13 +27,13 @@ logger = getLogger(__name__)
 class Modmail(commands.Cog):
     """Commands directly related to Modmail functionality."""
 
-    def __init__(self, bot):
+    def __init__(self, bot: ModmailBot):
         self.bot: ModmailBot = bot
         self._snoozed_cache = []
         self._auto_unsnooze_task = self.bot.loop.create_task(self.auto_unsnooze_task())
 
     @staticmethod
-    def _to_utc_datetime(value):
+    def _to_utc_datetime(value) -> Optional[datetime]:
         if value is None:
             return None
         if isinstance(value, datetime):
@@ -47,21 +48,18 @@ class Modmail(commands.Cog):
 
     async def auto_unsnooze_task(self):
         await self.bot.wait_until_ready()
-        last_db_query = 0
+        logger.debug("auto_unsnooze_task")
+        last_db_query: int | float = 0
         while not self.bot.is_closed():
-            now = datetime.now(timezone.utc)
+            now = time.monotonic()
             try:
                 # Query DB every 2 minutes
-                if (now.timestamp() - last_db_query) > 120:
-                    snoozed_threads = await self.bot.api.logs.find(
-                        {
-                            "$or": [
-                                {"snooze_until": {"$gte": now}},
-                            ]
-                        }
-                    ).to_list(None)
+                if (now - last_db_query) > 120:
+                    snoozed_threads = await self.bot.api.logs.find({"snoozed": True, "open": True}).to_list(
+                        None
+                    )
                     self._snoozed_cache = snoozed_threads or []
-                    last_db_query = now.timestamp()
+                    last_db_query = time.monotonic()
                 # Check cache every 10 seconds
                 to_unsnooze = []
                 for thread_data in list(self._snoozed_cache):
@@ -74,7 +72,7 @@ class Modmail(commands.Cog):
                         dt = self._to_utc_datetime(snooze_until)
                         if dt is None:
                             continue
-                        if now >= dt:
+                        if datetime.now(timezone.utc) >= dt:
                             to_unsnooze.append(thread_data)
                 for thread_data in to_unsnooze:
                     recipient = thread_data.get("recipient")
@@ -92,7 +90,7 @@ class Modmail(commands.Cog):
                             if channel:
                                 await channel.send("⏰ This thread has been automatically unsnoozed.")
                         except Exception as e:
-                            logger.info(
+                            logger.error(
                                 "Failed to notify channel after auto-unsnooze: %s",
                                 e,
                             )
@@ -101,7 +99,7 @@ class Modmail(commands.Cog):
                 logger.error(f"Error in auto_unsnooze_task: {e}")
             await asyncio.sleep(10)
 
-    def _resolve_user(self, user_str):
+    def _resolve_user(self, user_str: str) -> Optional[int]:
         """Helper to resolve a user from mention, ID, or username."""
         import re
 
@@ -319,11 +317,11 @@ class Modmail(commands.Cog):
         """
         Add a snippet.
 
-        Simply to add a snippet, do: 
+        Simply to add a snippet, do:
         `{prefix}snippet add hey hello there :)`
         then when you type `{prefix}hey`, "hello there :)" will get sent to the recipient.
 
-        To add a multi-word snippet name, use quotes: 
+        To add a multi-word snippet name, use quotes:
         `{prefix}snippet add "two word" this is a two word snippet.`
         """
         if self._validate_snippet_name(name):
@@ -1640,14 +1638,17 @@ class Modmail(commands.Cog):
         async with safe_typing(ctx):
             await ctx.thread.reply(ctx.message, msg, anonymous=True, plain=True)
 
-
-    async def _create_note(self, message: discord.Message, msg: str, thread: Thread, persistent: bool) -> Optional[discord.Message]:
+    async def _create_note(
+        self, message: discord.Message, msg: str, thread: Thread, persistent: bool
+    ) -> Optional[discord.Message]:
         message.content = msg
         async with safe_typing(message.channel):
             note_message = await thread.note(message, persistent)
             await note_message.pin()
         if persistent:
-            await self.bot.api.create_note(recipient=thread.recipient, message=message, message_id=note_message.id)
+            await self.bot.api.create_note(
+                recipient=thread.recipient, message=message, message_id=note_message.id
+            )
         # Acknowledge and clean up the invoking command message
         sent_emoji, _ = await self.bot.retrieve_emoji()
         await self.bot.add_reaction(message, sent_emoji)
@@ -1829,7 +1830,9 @@ class Modmail(commands.Cog):
                     try:
                         await msg.delete(delay=10)
                     except (discord.Forbidden, discord.NotFound) as e:
-                        logger.debug(f"Failed to delete message (likely already deleted or lacking permissions): {e}")
+                        logger.debug(
+                            f"Failed to delete message (likely already deleted or lacking permissions): {e}"
+                        )
             # Don't try to create a new thread - we just unsnoozed existing ones
             return
 
@@ -2448,9 +2451,9 @@ class Modmail(commands.Cog):
                 try:
                     logger.debug("Auto-creating snoozed category for move-based snoozing.")
                     # Hide category by default; only bot can view/manage
-                    overwrites: dict[Union[discord.Role, discord.Member, discord.Object], discord.PermissionOverwrite] = {
-                        self.bot.modmail_guild.default_role: discord.PermissionOverwrite(view_channel=False)
-                    }
+                    overwrites: dict[
+                        Union[discord.Role, discord.Member, discord.Object], discord.PermissionOverwrite
+                    ] = {self.bot.modmail_guild.default_role: discord.PermissionOverwrite(view_channel=False)}
                     bot_member = self.bot.modmail_guild.me
                     if bot_member is not None:
                         overwrites[bot_member] = discord.PermissionOverwrite(
@@ -2573,7 +2576,7 @@ class Modmail(commands.Cog):
         assert self.bot.threads is not None
 
         thread: Thread | None = None
-        
+
         user_obj = None
         if user is not None:
             user_id = self._resolve_user(user)
@@ -2607,7 +2610,9 @@ class Modmail(commands.Cog):
 
         # Manually fetch snooze_data if the thread object doesn't have it
         if not thread.snooze_data:
-            log_entry = await self.bot.api.logs.find_one({"recipient.id": str(thread.id), "snoozed": True, "_id": str(thread.key)})
+            log_entry = await self.bot.api.logs.find_one(
+                {"recipient.id": str(thread.id), "snoozed": True, "_id": str(thread.key)}
+            )
             if log_entry:
                 thread.snooze_data = log_entry.get("snooze_data")
             else:
@@ -2636,7 +2641,6 @@ class Modmail(commands.Cog):
         if not snoozed_threads:
             await ctx.send("No threads are currently snoozed.")
             return
-
 
         # TODO this should really be a
         lines = []
@@ -2667,9 +2671,7 @@ class Modmail(commands.Cog):
                         until_dt = since_dt + timedelta(seconds=int(duration))
                         until_str = f"<t:{int(until_dt.timestamp())}:R>"
                     except (ValueError, TypeError) as e:
-                        logger.warning(
-                            f"Invalid until time for {user_id}: {since} + {duration} ({e})"
-                        )
+                        logger.warning(f"Invalid until time for {user_id}: {since} + {duration} ({e})")
 
             lines.append(f"- {user} (`{user_id}`) since {since_str}, until {until_str}")
 
@@ -2680,8 +2682,11 @@ class Modmail(commands.Cog):
 
     @tasks.loop(seconds=10)
     async def snooze_auto_unsnooze(self):
+        logger.debug("snooze_auto_unsnooze")
         now = datetime.now(timezone.utc)
-        snoozed = await self.bot.api.logs.find({"snoozed": True, "open": True, "snooze_until": {"$lte": now}}).to_list(None)
+        snoozed = await self.bot.api.logs.find(
+            {"snoozed": True, "open": True, "snooze_until": {"$lte": now}}
+        ).to_list(None)
         for entry in snoozed:
             snooze_until = entry.get("snooze_until")
             if snooze_until:
