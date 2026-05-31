@@ -1,4 +1,4 @@
-__version__ = "5.0.0-alpha.1"
+__version__ = "5.0.0-alpha.2"
 
 import asyncio
 import copy
