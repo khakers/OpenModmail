@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Union
 
 import discord
 from aiohttp import ClientResponse, ClientResponseError
-from discord import DMChannel, Member, Message, TextChannel
+from discord import DMChannel, Member, Message, TextChannel, User
 from discord.ext import commands
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo.errors import ConfigurationError
@@ -598,7 +598,7 @@ class MongoDBClient(ApiClient):
             prefix = ""
         return f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{doc['key']}"
 
-    async def create_log_entry(self, recipient: Member, channel: TextChannel, creator: Member) -> str:
+    async def create_log_entry(self, recipient: Member | User, channel: TextChannel, creator: Member) -> str:
         key = secrets.token_hex(6)
 
         dm_channel = await recipient.create_dm()

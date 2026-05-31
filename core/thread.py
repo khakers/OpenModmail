@@ -39,7 +39,6 @@ if typing.TYPE_CHECKING:
 
 logger = getLogger(__name__)
 
-
 class Thread:
     """Represents a discord Modmail thread"""
 
@@ -178,6 +177,15 @@ class Thread:
         if flag:
             for i in self.wait_tasks:
                 i.cancel()
+
+    @property
+    def log_url(self) -> str:
+        prefix = self.bot.config["log_url_prefix"].strip("/")
+        if prefix == "NONE":
+            prefix = ""
+        return (
+            f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{self.log_key}"
+        )
 
     async def snooze(self, moderator: discord.User|discord.Member=None, command_used=None, snooze_for=None, ignored_message_ids: set[int]=None ):
         """
@@ -903,6 +911,7 @@ class Thread:
                 self._channel = channel
 
         try:
+            assert recipient is not None
             log_key, log_data = await asyncio.gather(
                 self.bot.api.create_log_entry(recipient, channel, creator or recipient),
                 self.bot.api.get_user_logs(recipient.id),
@@ -926,7 +935,7 @@ class Thread:
             mention = self.bot.config["mention"]
 
         async def send_genesis_message():
-            info_embed = self._format_info_embed(recipient, log_url, log_count, self.bot.main_color)
+            info_embed = self._format_info_embed(recipient, self.log_url, log_count, self.bot.main_color)
             try:
                 if mention_msg:
                     msg = await channel.send((mention + " " + mention_msg), embed=info_embed)
@@ -1052,7 +1061,7 @@ class Thread:
         )
         self.bot.dispatch("thread_ready", self, creator, category, initial_message)
 
-    def _format_info_embed(self, user, log_url, log_count, color):
+    def _format_info_embed(self, user, log_url: str, log_count, color):
         """Get information about a member of a server
         supports users from the guild or not."""
         member = self.bot.guild.get_member(user.id)
@@ -1215,12 +1224,7 @@ class Thread:
             log_data = None
 
         if isinstance(log_data, dict):
-            prefix = self.bot.config["log_url_prefix"].strip("/")
-            if prefix == "NONE":
-                prefix = ""
-            log_url = (
-                f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{log_data['_id']}"
-            )
+            log_url = self.log_url
 
             if log_data["title"]:
                 sneak_peak = log_data["title"]
