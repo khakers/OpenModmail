@@ -2682,7 +2682,6 @@ class Modmail(commands.Cog):
 
     @tasks.loop(seconds=10)
     async def snooze_auto_unsnooze(self):
-        logger.debug("snooze_auto_unsnooze")
         now = datetime.now(timezone.utc)
         snoozed = await self.bot.api.logs.find(
             {"snoozed": True, "open": True, "snooze_until": {"$lte": now}}

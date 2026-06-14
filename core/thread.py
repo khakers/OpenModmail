@@ -41,6 +41,31 @@ logger = getLogger(__name__)
 
 class Thread:
     """Represents a discord Modmail thread"""
+    class _SnoozeMessageData(typing.TypedDict, total=False):
+        author_id: int
+        content: str
+        attachments: list[str]
+        embeds: list[dict[str, typing.Any]]
+        created_at: str
+        type: typing.Optional[str]
+        author_name: typing.Optional[str]
+        author_avatar: typing.Optional[str]
+
+    class _SnoozeData(typing.TypedDict, total=False):
+        category_id: typing.Optional[int]
+        position: int
+        name: str
+        topic: typing.Optional[str]
+        slowmode_delay: int
+        nsfw: bool
+        overwrites: list[tuple[int, dict[str, typing.Any]]]
+        messages: list["Thread._SnoozeMessageData"]
+        snoozed_by: typing.Optional[int]
+        snooze_command: typing.Optional[str]
+        log_key: typing.Optional[str]
+        snooze_start: datetime
+        snooze_for: typing.Any
+        moved: bool
 
     def __init__(
         self,
@@ -74,36 +99,34 @@ class Thread:
         # --- SNOOZE STATE ---
         self.snoozed: bool = False  # True if thread is snoozed
         self.log_key: str | None = None  # Ensure log_key always exists
-        class _SnoozeMessageData(typing.TypedDict, total=False):
-            author_id: int
-            content: str
-            attachments: list[str]
-            embeds: list[dict[str, typing.Any]]
-            created_at: str
-            type: typing.Optional[str]
-            author_name: typing.Optional[str]
-            author_avatar: typing.Optional[str]
 
-        class _SnoozeData(typing.TypedDict, total=False):
-            category_id: typing.Optional[int]
-            position: int
-            name: str
-            topic: typing.Optional[str]
-            slowmode_delay: int
-            nsfw: bool
-            overwrites: list[tuple[int, dict[str, typing.Any]]]
-            messages: list[_SnoozeMessageData]
-            snoozed_by: typing.Optional[int]
-            snooze_command: typing.Optional[str]
-            log_key: typing.Optional[str]
-            snooze_start: datetime
-            snooze_for: typing.Any
-            moved: bool
 
-        self.snooze_data: typing.Optional[_SnoozeData] = None # Dict with channel/category/position/messages for restoration
+        self.snooze_data: typing.Optional[self._SnoozeData] = None # Dict with channel/category/position/messages for restoration
         # --- UNSNOOZE COMMAND QUEUE ---
         self._unsnoozing = False  # True while restore_from_snooze is running
         self._command_queue = []  # Queue of (ctx, command) tuples; close commands always last
+
+
+    @classmethod
+    async def create(cls,
+        manager: "ThreadManager",
+        recipient: typing.Union[discord.Member, discord.User, int],
+        channel: discord.DMChannel | discord.TextChannel | None = None,
+        other_recipients: typing.List[typing.Union[discord.Member, discord.User]] | None = None,
+        ):
+        """Async factory method to create and initialize a Thread instance."""
+        self = cls(manager, recipient, channel, other_recipients)
+        # Perform any async initialization here if needed
+        if channel is not None:
+            log = await manager.bot.api.get_log(str(channel.id))
+            logger.debug(log)
+            if log and "key" in log:
+                self._key = log["key"]
+                self.log_key = log["key"]
+                logger.debug(f"set key to {log['key']}")
+        return self
+
+
 
     def __repr__(self):
         return f'Thread(recipient="{self.recipient or self.id}", channel={self.channel.id}, other_recipients={len(self._other_recipients)})'
@@ -2603,9 +2626,9 @@ class ThreadManager:
             other_recipients.append(other_recipient)
 
         if recipient is None:
-            thread = Thread(self, user_id, channel, other_recipients)
+            thread = await Thread.create(self, user_id, channel, other_recipients)
         else:
-            self.cache[user_id] = thread = Thread(self, recipient, channel, other_recipients)
+            self.cache[user_id] = thread = await Thread.create(self, recipient, channel, other_recipients)
         thread.ready = True
 
         return thread
@@ -2644,7 +2667,7 @@ class ThreadManager:
                     )
                 )
                 await message.channel.send(embed=embed)
-                thread = Thread(self, recipient)
+                thread = await Thread.create(self, recipient)
                 thread.cancelled = True
                 return thread
 
@@ -2673,7 +2696,7 @@ class ThreadManager:
                     thread.close(closer=self.bot.user, silent=True, delete_channel=False)
                 )
 
-        thread = Thread(self, recipient)
+        thread = await Thread.create(self, recipient)
 
         self.cache[recipient.id] = thread
 
