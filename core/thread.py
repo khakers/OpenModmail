@@ -119,7 +119,6 @@ class Thread:
         # Perform any async initialization here if needed
         if channel is not None:
             log = await manager.bot.api.get_log(str(channel.id))
-            logger.debug(log)
             if log and "key" in log:
                 self._key = log["key"]
                 self.log_key = log["key"]
