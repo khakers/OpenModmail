@@ -744,24 +744,11 @@ class Thread:
                         # If there were attachment URLs, include them as a field so mods can access them
                         if attachments:
                             try:
-                                # Extract URLs, preferring S3 presigned URLs for resilience
-                                attachment_urls = []
-                                for att in attachments:
-                                    if isinstance(att, dict):
-                                        # New format with full metadata
-                                        url = att.get("s3_presigned_url") or att.get("url")
-                                    else:
-                                        # Old format: just URL string
-                                        url = att
-                                    if url:
-                                        attachment_urls.append(url)
-
-                                if attachment_urls:
-                                    embeds[0].add_field(
-                                        name="Attachments",
-                                        value="\n".join(attachment_urls),
-                                        inline=False,
-                                    )
+                                embeds[0].add_field(
+                                    name="Attachments",
+                                    value="\n".join(attachments),
+                                    inline=False,
+                                )
                             except Exception as e:
                                 logger.info(
                                     "Failed to add attachments field while replaying unsnoozed messages: %s",
@@ -958,7 +945,6 @@ class Thread:
                 self.bot.api.create_log_entry(recipient, channel, creator or recipient),
                 self.bot.api.get_user_logs(recipient.id),
             )
-            logger.debug(log_key)
             self._key = log_key
             log_count = sum(1 for log in log_data if not log["open"])
         except Exception:
