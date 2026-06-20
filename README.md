@@ -49,6 +49,7 @@ logs for this fork.
   * Login via Discord to protect your logs (optional feature).
   * See past logs of a user with `?logs`.
   * Searchable by text queries using `?logs search`.
+  * **S3 Attachment Archival:** Archive message attachments to durable S3 storage to preserve access beyond Discord's URL expiration (~7 days). Supports AWS S3 and S3-compatible services.
 
 * **Robust implementation:**
   * Schedule tasks in human time, e.g. `?close in 2 hours silently`.

@@ -1557,5 +1557,70 @@
     "notes": [
       "Color names map to the built-in palette (e.g., 'red', 'green', 'blurple')."
     ]
+  },
+  "s3_enabled": {
+    "default": "No",
+    "description": "Enable archival of message attachments to S3 storage. When enabled, attachments are uploaded to S3 after successful Discord transmission and logged metadata includes S3 references for resilient playback.",
+    "examples": [
+      "`{prefix}config set s3_enabled yes`",
+      "`{prefix}config set s3_enabled no`"
+    ],
+    "notes": [
+      "Requires `s3_bucket`, `s3_region`, and `s3_access_key_id`/`s3_secret_access_key` to be configured.",
+      "S3 archival applies to logged messages and thread replay scenarios. Live relay to Discord is unaffected.",
+      "See also: `s3_bucket`, `s3_region`, `s3_endpoint`, `s3_key_prefix`."
+    ]
+  },
+  "s3_bucket": {
+    "default": "None",
+    "description": "The name of the S3 bucket where message attachments will be archived.",
+    "examples": [
+      "`{prefix}config set s3_bucket my-modmail-attachments`",
+      "`{prefix}config set s3_bucket modmail-prod`"
+    ],
+    "notes": [
+      "This configuration can only be set through `.env` file or environment (config) variables for security.",
+      "Required when `s3_enabled` is set to yes.",
+      "See also: `s3_enabled`, `s3_region`, `s3_key_prefix`."
+    ]
+  },
+  "s3_region": {
+    "default": "None",
+    "description": "The region where the S3 bucket is located.",
+    "examples": [
+      "`{prefix}config set s3_region us-east-1`",
+      "`{prefix}config set s3_region eu-west-1`",
+      "`{prefix}config set s3_region ap-southeast-1`"
+    ],
+    "notes": [
+      "This configuration can only be set through `.env` file or environment (config) variables.",
+      "See also: `s3_enabled`, `s3_bucket`, `s3_endpoint`."
+    ]
+  },
+  "s3_endpoint": {
+    "default": "None (uses AWS S3)",
+    "description": "Optional custom S3-compatible endpoint URL for use with MinIO, DigitalOcean Spaces, or other S3-compatible services.",
+    "examples": [
+      "`{prefix}config set s3_endpoint https://minio.example.com:9000`",
+      "`{prefix}config set s3_endpoint https://nyc3.digitaloceanspaces.com`"
+    ],
+    "notes": [
+      "This configuration can only be set through `.env` file or environment (config) variables.",
+      "Leave unset to use AWS S3 directly.",
+      "See also: `s3_enabled`, `s3_region`."
+    ]
+  },
+  "s3_key_prefix": {
+    "default": "modmail/attachments/",
+    "description": "Prefix path within the S3 bucket where archived attachments will be stored.",
+    "examples": [
+      "`{prefix}config set s3_key_prefix modmail/attachments/`",
+      "`{prefix}config set s3_key_prefix archive/files/`"
+    ],
+    "notes": [
+      "Should include a trailing slash.",
+      "Useful for organizing archived attachments within a larger S3 bucket.",
+      "See also: `s3_enabled`, `s3_bucket`."
+    ]
   }
 }
