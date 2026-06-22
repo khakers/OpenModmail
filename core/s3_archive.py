@@ -7,13 +7,15 @@ Provides resilient attachment storage for logs and thread replay.
 
 import asyncio
 import logging
+import typing
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from urllib.parse import quote
 
 import aiohttp
 from discord import Attachment
-from mypy_boto3_s3 import S3Client
+
+if typing.TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
 
 try:
     import boto3

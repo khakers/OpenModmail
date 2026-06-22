@@ -1717,7 +1717,7 @@ class Thread:
 
         # Log as 'note' type for logviewer
         self.bot.loop.create_task(
-            self.bot.api.append_log(message, message_id=msg.id, channel_id=self.channel.id, type_="note")
+            self.bot.api.append_log(message, message_id=msg.id, channel_id=self.channel.id, type_="note", thread_key = self.key)
         )
 
         return msg
@@ -2091,13 +2091,15 @@ class Thread:
 
         ext = [(a.url, a.filename, False) for a in message.attachments]
 
-        images = []
-        attachments = []
-        for attachment in ext:
-            if is_image_url(attachment[0]):
-                images.append(attachment)
-            else:
-                attachments.append(attachment)
+        images: list[tuple[str, str | None, bool]] = []
+        attachments: list[tuple[str, str, bool]] = []
+
+        for attachment in message.attachments:
+            if attachment.content_type in ["image/png", "image/jpeg", "image/gif", "video/webm", "video/mp4"]:
+                images.append((attachment.url, attachment.filename, False))
+            else: 
+                attachments.append((attachment.url, attachment.filename, False))
+
 
         image_urls = re.findall(
             r"http[s]?:\/\/(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+",

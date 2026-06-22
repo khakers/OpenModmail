@@ -1,5 +1,6 @@
 import secrets
 import sys
+import typing
 from json import JSONDecodeError
 from typing import Any, Dict, Optional, Union
 
@@ -11,9 +12,11 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo.errors import ConfigurationError
 from pymongo.uri_parser import parse_uri
 
-from bot import ModmailBot
 from core.models import InvalidConfigError, getLogger
-from core.s3_archive import S3AttachmentArchiver, S3ArchiveConfig
+from core.s3_archive import S3ArchiveConfig, S3AttachmentArchiver
+
+if typing.TYPE_CHECKING:
+    from bot import ModmailBot
 
 logger = getLogger(__name__)
 
@@ -301,7 +304,7 @@ class ApiClient:
         The bot's current running `ClientSession`.
     """
 
-    def __init__(self, bot: ModmailBot, db):
+    def __init__(self, bot: "ModmailBot", db):
         self.bot = bot
         self.db = db
         self.session = bot.session
