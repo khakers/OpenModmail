@@ -9,17 +9,23 @@ however, insignificant breaking changes do not guarantee a major version bump, s
 # [UNRELEASED]
 
 ### Breaking
+
 - Completely rewritten blocklist system. Blocklisting now runs off its own mongoDB collection. This once again introduces backwards incompatible schema changes, so a manual migration is required. You may upgrade from both v4.0 and v4.1 using the `[p]migrate blocklist` command. This removes any need to perform the previous migration steps in v4.1.0, you may upgrade directly to this version. After running the command, blocklist functionality will return and legacy config based blocks will have been deleted. You should always back up your config before migration.
 - Remove internal logviewer plugin
 - Bump Python version to >= 3.12
 
 ### Deprecated
+
 - Legacy blocklist properties are deprecated and no longer function. They now log a warning when used and provide no functionality. They have been replaced with methods in blocklist.py 
 
 ### Added
+
 - Added `content_type` to attachments stored in the database.
 - `?log key <key>` to retrieve the log link and view a preview using a log key. ([PR #3196](https://github.com/modmail-dev/Modmail/pull/3196))
 - Add Forced plugins. Allows auto installing un-removable plugins via `FORCED_PLUGINS` environment variable contain a comma separate list of plugins. (GH#5)
+- S3 based attachment archival
+
+
 Commands:
 * `snooze`: Initiates a snooze action.
 * `snoozed`: Displays snoozed items.
@@ -54,8 +60,8 @@ Configuration Options:
     * Anonymous prompt support (`thread_creation_menu_anonymous_menu`).
 
 
-
 ### Changed
+
 - Changing a threads title or NSFW status immediately updates the status in the database.
 - Replace Pipenv with PDM
 - Bump discord.py version to 2.3.2
@@ -64,6 +70,7 @@ Configuration Options:
 - Upgrade dependencies for modern python
 
 ### Removed
+
 - Remove Discord.py dependency version check
 - Remove modmail telemetry
 - Remove lottie sticker support
@@ -71,6 +78,7 @@ Configuration Options:
   - Autoupdating was prone to serious issues and cannot be used within container images, the only supported distribution method of OpenModmail.
 
 ### Fixed
+
 - Persistent notes have been fixed after the previous discord.py update.
 - `is_image` now is true only if the image is actually an image.
 - Fix contact command reporting user was blocked when they weren't.
@@ -86,6 +94,7 @@ Configuration Options:
 
 
 ### Internal
+
 - Add `update_title` and `update_nsfw` methods to `ApiClient` to update thread title and nsfw status in the database.
 - `thread.set_title` now requires `channel_id` to be passed as keyword arguments.
 - New `thread.set_nsfw_status` method to set nsfw status of a thread.
