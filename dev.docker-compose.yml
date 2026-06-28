@@ -1,0 +1,53 @@
+services:
+  bot:
+    image: ghcr.io/khakers/openmodmail:develop
+    restart: no
+    build:
+        context: .
+        dockerfile: Dockerfile
+        args:
+          INCLUDE_SUPPORTUTILS: "true"
+          INCLUDE_PIP: "true"
+          PYTHON_VERSION: 3.13
+#    env_file:
+#      - .env
+    environment:
+      - CONNECTION_URI=mongodb://mongo
+      - TOKEN=${DISCORD_BOT_TOKEN}
+      - s3_endpoint=http://versitygw:7070
+      - s3_bucket=modmail-dev
+      - s3_enabled=true
+      
+    depends_on:
+      - mongo
+
+  mongo:
+    restart: no
+    ports:
+      - "127.0.0.1:27017:27017"
+    
+  versitygw:
+    image: ghcr.io/versity/versitygw:latest
+    ports:
+      - "7070:7070"
+      - "7071:7071"
+      - "8080:8080"
+    environment:
+      ROOT_ACCESS_KEY: myaccesskey
+      ROOT_SECRET_KEY: mysecretkey
+      VGW_PORT: ":7070"
+      VGW_IAM_DIR: /data/iam
+      VGW_VERSIONING_DIR: /data/versioning
+      VGW_BACKEND: posix
+      VGW_BACKEND_ARGS: /data/s3
+      VGW_ADMIN_PORT: ":7071"
+      VGW_WEBUI_PORT: ":8080"
+      VGW_WEBUI_GATEWAYS: "http://localhost:7070"
+      VGW_WEBUI_ADMIN_GATEWAYS: "http://localhost:7071"
+    volumes:
+      - ./s3-data/s3:/data/s3
+      - ./s3-data/versioning:/data/versioning
+      - ./s3-data/iam:/data/iam
+
+volumes:
+  mongodb:

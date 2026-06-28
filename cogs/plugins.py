@@ -15,12 +15,12 @@ from subprocess import PIPE
 
 import discord
 from discord.ext import commands
-from pkg_resources import parse_version
+from packaging.version import Version
 
 from core import checks
 from core.models import PermissionLevel, getLogger
 from core.paginator import EmbedPaginatorSession
-from core.utils import trigger_typing, truncate
+from core.utils import trigger_typing, truncate, safe_typing
 
 logger = getLogger(__name__)
 
@@ -113,10 +113,11 @@ class Plugins(commands.Cog):
     These addons could have a range of features from moderation to simply
     making your life as a moderator easier!
     Learn how to create a plugin yourself here:
-    https://github.com/modmail-dev/modmail/wiki/Plugins
+    https://docs.modmail.dev/usage-guide/plugins
     """
 
     def __init__(self, bot):
+        self.forced_plugins: list[str] = []
         self.bot = bot
         self.registry = {}
         self.loaded_plugins = set()
@@ -134,33 +135,56 @@ class Plugins(commands.Cog):
         async with self.bot.session.get(url) as resp:
             self.registry = json.loads(await resp.text())
 
-    async def initial_load_plugins(self):
-        for plugin_name in list(self.bot.config["plugins"]):
+    def _get_forced_plugins(self) -> list[str]:
+        env_list = os.getenv("FORCED_PLUGINS")
+        if env_list is None:
+            return []
+        plugins = env_list.split(",")
+        return plugins
+
+    async def _init_load_plugin(self, plugin_name: str):
+        try:
+            # Strict seems to only affect whether specifying the branch is required
+            plugin = Plugin.from_string(plugin_name, strict=False)
+        except InvalidPluginError:
+            self.bot.config["plugins"].remove(plugin_name)
             try:
-                plugin = Plugin.from_string(plugin_name, strict=True)
+                # For backwards compat
+                plugin = Plugin.from_string(plugin_name)
             except InvalidPluginError:
-                self.bot.config["plugins"].remove(plugin_name)
-                try:
-                    # For backwards compat
-                    plugin = Plugin.from_string(plugin_name)
-                except InvalidPluginError:
-                    logger.error("Failed to parse plugin name: %s.", plugin_name, exc_info=True)
-                    continue
+                logger.error("Failed to parse plugin name: %s.", plugin_name, exc_info=True)
+                return
 
-                logger.info("Migrated legacy plugin name: %s, now %s.", plugin_name, str(plugin))
-                self.bot.config["plugins"].append(str(plugin))
+            logger.info("Migrated legacy plugin name: %s, now %s.", plugin_name, str(plugin))
+            self.bot.config["plugins"].append(str(plugin))
 
-            try:
-                await self.download_plugin(plugin)
-                await self.load_plugin(plugin)
-            except Exception:
-                self.bot.config["plugins"].remove(plugin_name)
-                logger.error(
-                    "Error when loading plugin %s. Plugin removed from config.",
-                    plugin,
-                    exc_info=True,
-                )
+        try:
+            await self.download_plugin(plugin)
+            await self.load_plugin(plugin)
+        except Exception:
+            self.bot.config["plugins"].remove(plugin_name)
+            logger.error(
+                "Error when loading plugin %s. Plugin removed from config.",
+                plugin,
+                exc_info=True,
+            )
+
+    async def initial_load_plugins(self):
+        self.forced_plugins = self._get_forced_plugins()
+        logger.debug(f"loading {len(self.forced_plugins)} forced plugins")
+        for plugin_name in self.forced_plugins:
+            logger.debug(f"loading forced plugin {plugin_name}")
+            await self._init_load_plugin(plugin_name)
+
+        user_plugins = list(self.bot.config["plugins"])
+        logger.debug(f"loading {len(user_plugins)} config plugins")
+
+        for plugin_name in user_plugins:
+            # Skip loading this plugin if it is in the force load list and thus already loaded
+            if plugin_name in self.forced_plugins:
+                logger.debug(f"Skipped loading user plugin {plugin_name} because it is forced installed.")
                 continue
+            await self._init_load_plugin(plugin_name)
 
         logger.debug("Finished loading all plugins.")
 
@@ -248,7 +272,11 @@ class Plugins(commands.Cog):
 
             if stderr:
                 logger.debug("[stderr]\n%s.", stderr.decode())
-                logger.error("Failed to download requirements for %s.", plugin.ext_string, exc_info=True)
+                logger.error(
+                    "Failed to download requirements for %s.",
+                    plugin.ext_string,
+                    exc_info=True,
+                )
                 raise InvalidPluginError(f"Unable to download requirements: ```\n{stderr.decode()}\n```")
 
             if os.path.exists(USER_SITE):
@@ -262,6 +290,17 @@ class Plugins(commands.Cog):
         except commands.ExtensionError as exc:
             logger.error("Plugin load failure: %s", plugin.ext_string, exc_info=True)
             raise InvalidPluginError("Cannot load extension, plugin invalid.") from exc
+
+    async def unload_plugin(self, plugin: Plugin) -> None:
+        try:
+            await self.bot.unload_extension(plugin.ext_string)
+        except commands.ExtensionError as exc:
+            raise exc
+
+        ext_parent = ".".join(plugin.ext_string.split(".")[:-1])
+        for module in list(sys.modules.keys()):
+            if module == ext_parent or module.startswith(ext_parent + "."):
+                del sys.modules[module]
 
     async def parse_user_input(self, ctx, plugin_name, check_version=False):
         if not self.bot.config["enable_plugins"]:
@@ -288,7 +327,7 @@ class Plugins(commands.Cog):
             if check_version:
                 required_version = details.get("bot_version", False)
 
-                if required_version and self.bot.version < parse_version(required_version):
+                if required_version and self.bot.version < Version(required_version):
                     embed = discord.Embed(
                         description="Your bot's version is too low. "
                         f"This plugin requires version `{required_version}`.",
@@ -314,7 +353,7 @@ class Plugins(commands.Cog):
                 embed = discord.Embed(
                     description="Invalid plugin name, double check the plugin name "
                     "or use one of the following formats: "
-                    "username/repo/plugin-name, username/repo/plugin-name@branch, local/plugin-name.",
+                    "username/repo/plugin-name, username/repo/plugin-name@branch, @local/plugin-name.",
                     color=self.bot.error_color,
                 )
                 await ctx.send(embed=embed)
@@ -339,7 +378,7 @@ class Plugins(commands.Cog):
 
         `plugin_name` can be the name of the plugin found in `{prefix}plugin registry`,
         or a direct reference to a GitHub hosted plugin (in the format `user/repo/name[@branch]`)
-        or `local/name` for local plugins.
+        or `@local/name` for local plugins.
         """
 
         plugin = await self.parse_user_input(ctx, plugin_name, check_version=True)
@@ -347,7 +386,10 @@ class Plugins(commands.Cog):
             return
 
         if str(plugin) in self.bot.config["plugins"]:
-            embed = discord.Embed(description="This plugin is already installed.", color=self.bot.error_color)
+            embed = discord.Embed(
+                description="This plugin is already installed.",
+                color=self.bot.error_color,
+            )
             return await ctx.send(embed=embed)
 
         if plugin.name in self.bot.cogs:
@@ -376,7 +418,7 @@ class Plugins(commands.Cog):
             logger.warning("Unable to download plugin %s.", plugin, exc_info=True)
 
             embed = discord.Embed(
-                description=f"Failed to download plugin, check logs for error.\n{type(e)}: {e}",
+                description=f"Failed to download plugin, check logs for error.\n{type(e).__name__}: {e}",
                 color=self.bot.error_color,
             )
 
@@ -394,7 +436,7 @@ class Plugins(commands.Cog):
                 logger.warning("Unable to load plugin %s.", plugin, exc_info=True)
 
                 embed = discord.Embed(
-                    description=f"Failed to download plugin, check logs for error.\n{type(e)}: {e}",
+                    description=f"Failed to load plugin, check logs for error.\n{type(e).__name__}: {e}",
                     color=self.bot.error_color,
                 )
 
@@ -423,10 +465,19 @@ class Plugins(commands.Cog):
         Remove an installed plugin of the bot.
 
         `plugin_name` can be the name of the plugin found in `{prefix}plugin registry`, or a direct reference
-        to a GitHub hosted plugin (in the format `user/repo/name[@branch]`) or `local/name` for local plugins.
+        to a GitHub hosted plugin (in the format `user/repo/name[@branch]`) or `@local/name` for local plugins.
         """
         plugin = await self.parse_user_input(ctx, plugin_name)
         if plugin is None:
+            return
+
+        if str(plugin) in self.forced_plugins:
+            await ctx.send(
+                embed=discord.Embed(
+                    description="This plugin cannot be removed. Contact your admin for more information.",
+                    color=self.bot.error_color,
+                )
+            )
             return
 
         if str(plugin) not in self.bot.config["plugins"]:
@@ -435,7 +486,7 @@ class Plugins(commands.Cog):
 
         if self.bot.config.get("enable_plugins"):
             try:
-                await self.bot.unload_extension(plugin.ext_string)
+                await self.unload_plugin(plugin)
                 self.loaded_plugins.remove(plugin)
             except (commands.ExtensionNotLoaded, KeyError):
                 logger.warning("Plugin was never loaded.")
@@ -456,7 +507,8 @@ class Plugins(commands.Cog):
                 pass  # dir not empty
 
         embed = discord.Embed(
-            description="The plugin is successfully uninstalled.", color=self.bot.main_color
+            description="The plugin is successfully uninstalled.",
+            color=self.bot.main_color,
         )
         await ctx.send(embed=embed)
 
@@ -470,16 +522,18 @@ class Plugins(commands.Cog):
             embed = discord.Embed(description="Plugin is not installed.", color=self.bot.error_color)
             return await ctx.send(embed=embed)
 
-        async with ctx.typing():
+        async with safe_typing(ctx):
             embed = discord.Embed(
-                description=f"Successfully updated {plugin.name}.", color=self.bot.main_color
+                description=f"Successfully updated {plugin.name}.",
+                color=self.bot.main_color,
             )
             await self.download_plugin(plugin, force=True)
             if self.bot.config.get("enable_plugins"):
                 try:
-                    await self.bot.unload_extension(plugin.ext_string)
+                    await self.unload_plugin(plugin)
                 except commands.ExtensionError:
                     logger.warning("Plugin unload fail.", exc_info=True)
+
                 try:
                     await self.load_plugin(plugin)
                 except Exception:
@@ -487,12 +541,12 @@ class Plugins(commands.Cog):
                         description=f"Failed to update {plugin.name}. This plugin will now be removed from your bot.",
                         color=self.bot.error_color,
                     )
-                    self.bot.config["plugins"].remove(plugin_name)
-                    logger.debug("Failed to update %s. Removed plugin from config.", plugin_name)
+                    self.bot.config["plugins"].remove(str(plugin))
+                    logger.debug("Failed to update %s. Removed plugin from config.", plugin)
                 else:
-                    logger.debug("Updated %s.", plugin_name)
+                    logger.debug("Updated %s.", plugin)
             else:
-                logger.debug("Updated %s.", plugin_name)
+                logger.debug("Updated %s.", plugin)
             return await ctx.send(embed=embed)
 
     @plugins.command(name="update")
@@ -502,7 +556,7 @@ class Plugins(commands.Cog):
         Update a plugin for the bot.
 
         `plugin_name` can be the name of the plugin found in `{prefix}plugin registry`, or a direct reference
-        to a GitHub hosted plugin (in the format `user/repo/name[@branch]`) or `local/name` for local plugins.
+        to a GitHub hosted plugin (in the format `user/repo/name[@branch]`) or `@local/name` for local plugins.
 
         To update all plugins, do `{prefix}plugins update`.
         """
@@ -526,17 +580,20 @@ class Plugins(commands.Cog):
         for ext in list(self.bot.extensions):
             if not ext.startswith("plugins."):
                 continue
+            logger.error("Unloading plugin: %s.", ext)
             try:
-                logger.error("Unloading plugin: %s.", ext)
-                await self.bot.unload_extension(ext)
-            except Exception:
-                logger.error("Failed to unload plugin: %s.", ext)
-            else:
-                if not self.loaded_plugins:
-                    continue
                 plugin = next((p for p in self.loaded_plugins if p.ext_string == ext), None)
                 if plugin:
+                    await self.unload_plugin(plugin)
                     self.loaded_plugins.remove(plugin)
+                else:
+                    await self.bot.unload_extension(ext)
+            except Exception:
+                logger.error("Failed to unload plugin: %s.", ext)
+
+        for module in list(sys.modules.keys()):
+            if module.startswith("plugins."):
+                del sys.modules[module]
 
         self.bot.config["plugins"].clear()
         await self.bot.config.update()
@@ -552,7 +609,8 @@ class Plugins(commands.Cog):
                 logger.warning("Removing %s.", entry.name)
 
         embed = discord.Embed(
-            description="Successfully purged all plugins from the bot.", color=self.bot.main_color
+            description="Successfully purged all plugins from the bot.",
+            color=self.bot.main_color,
         )
         return await ctx.send(embed=embed)
 
@@ -580,7 +638,8 @@ class Plugins(commands.Cog):
 
         if not self.loaded_plugins:
             embed = discord.Embed(
-                description="There are no plugins currently loaded.", color=self.bot.error_color
+                description="There are no plugins currently loaded.",
+                color=self.bot.error_color,
             )
             return await ctx.send(embed=embed)
 
@@ -640,7 +699,10 @@ class Plugins(commands.Cog):
             matches = get_close_matches(plugin_name, self.registry.keys())
 
             if matches:
-                embed.add_field(name="Perhaps you meant:", value="\n".join(f"`{m}`" for m in matches))
+                embed.add_field(
+                    name="Perhaps you meant:",
+                    value="\n".join(f"`{m}`" for m in matches),
+                )
 
             return await ctx.send(embed=embed)
 
@@ -672,7 +734,7 @@ class Plugins(commands.Cog):
                 embed.set_footer(text="This plugin is currently loaded.")
             else:
                 required_version = details.get("bot_version", False)
-                if required_version and self.bot.version < parse_version(required_version):
+                if required_version and self.bot.version < Version(required_version):
                     embed.set_footer(
                         text="Your bot is unable to install this plugin, "
                         f"minimum required version is v{required_version}."
@@ -733,7 +795,10 @@ class Plugins(commands.Cog):
 
         for page in pages:
             embed = discord.Embed(color=self.bot.main_color, description=page)
-            embed.set_author(name="Plugin Registry", icon_url=self.bot.user.display_avatar.url)
+            embed.set_author(
+                name="Plugin Registry",
+                icon_url=self.bot.user.display_avatar.url if self.bot.user.display_avatar else None,
+            )
             embeds.append(embed)
 
         paginator = EmbedPaginatorSession(ctx, *embeds)
