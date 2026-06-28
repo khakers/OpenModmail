@@ -1599,7 +1599,7 @@ class ModmailBot(commands.Bot):
                         # from the sent message as reply text while still preserving attachments.
                         await thread.reply(message, message.content, anonymous=anonymous, plain=plain)
                     else:
-                        logger.debug("Message ignored because it started with the ignore_prefix.")
+                        logger.debug(f"Message {message.id} ignored because it started with the ignore_prefix.")
                         await self.api.append_log(message, type_="internal")
                 else:
                     await self.api.append_log(message, type_="internal")
