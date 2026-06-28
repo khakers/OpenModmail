@@ -163,6 +163,12 @@ class ConfigManager:
         "thread_creation_menu_embed_large_image": False,
         "thread_creation_menu_embed_footer_icon_url": None,
         "thread_creation_menu_embed_color": str(discord.Color.green()),
+        # --- S3 ATTACHMENT ARCHIVAL ---
+        "s3_enabled": False,  # Enable archival of attachments to S3
+        "s3_bucket": None,  # S3 bucket name for attachment storage
+        "s3_region": None,  # AWS region (e.g., us-east-1, eu-west-1)
+        "s3_endpoint": None,  # Optional custom S3 endpoint (for MinIO, etc.)
+        "s3_key_prefix": "modmail/attachments/",  # Prefix for stored objects
     }
 
     private_keys = {
@@ -213,6 +219,9 @@ class ConfigManager:
         # github access token for private repositories
         "github_token": None,
         "disable_updates": False,
+        # S3 credentials
+        "s3_access_key_id": None,  # AWS access key ID for S3
+        "s3_secret_access_key": None,  # AWS secret access key for S3
         # Logging
         "log_level": "INFO",
         "stream_log_format": "plain",
@@ -279,6 +288,8 @@ class ConfigManager:
         "registry_plugins_only",
         # snooze
         "snooze_store_attachments",
+        # S3 attachment archival
+        "s3_enabled",
         # thread creation menu booleans
         "thread_creation_send_dm_embed",
         "thread_creation_menu_enabled",

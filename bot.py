@@ -1521,7 +1521,7 @@ class ModmailBot(commands.Bot):
                     # Only log if not a command
                     perms = message.channel.permissions_for(message.author)
                     if perms.manage_messages or perms.administrator:
-                        await self.api.append_log(message, type_="internal")
+                        await self.api.append_log(message, thread_key=thread.key, type_="internal")
 
         await self.process_commands(message)
 

@@ -72,7 +72,7 @@ class Thread:
         manager: "ThreadManager",
         recipient: typing.Union[discord.Member, discord.User, int],
         channel: discord.DMChannel | discord.TextChannel | None = None,
-        other_recipients: typing.List[typing.Union[discord.Member, discord.User]] | None = None,
+        other_recipients: typing.List[discord.Member | discord.User] | None = None,
     ):
         self.manager = manager
         self.bot = manager.bot
@@ -100,8 +100,7 @@ class Thread:
         self.snoozed: bool = False  # True if thread is snoozed
         self.log_key: str | None = None  # Ensure log_key always exists
 
-
-        self.snooze_data: typing.Optional[self._SnoozeData] = None # Dict with channel/category/position/messages for restoration
+        self.snooze_data: typing.Optional[Thread._SnoozeData] = None # Dict with channel/category/position/messages for restoration
         # --- UNSNOOZE COMMAND QUEUE ---
         self._unsnoozing = False  # True while restore_from_snooze is running
         self._command_queue = []  # Queue of (ctx, command) tuples; close commands always last
@@ -209,7 +208,7 @@ class Thread:
             f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{self.log_key}"
         )
 
-    async def snooze(self, moderator: discord.User|discord.Member=None, command_used=None, snooze_for=None, ignored_message_ids: set[int]=None ):
+    async def snooze(self, moderator: discord.User | discord.Member | None=None, command_used=None, snooze_for=None, ignored_message_ids: set[int]=None ):
         """
         Save channel/category/position/messages to DB, mark as snoozed.
         Behavior is configurable:
@@ -275,7 +274,15 @@ class Thread:
                 {
                     "author_id": m.author.id,
                     "content": m.content,
-                    "attachments": [a.url for a in m.attachments],
+                    "attachments": [
+                        {
+                            "filename": a.filename,
+                            "url": a.url,
+                            "size": a.size,
+                            "content_type": a.content_type,
+                        }
+                        for a in m.attachments
+                    ],
                     "embeds": [e.to_dict() for e in m.embeds],
                     "created_at": m.created_at.isoformat(),
                     "type": (
@@ -942,7 +949,6 @@ class Thread:
             log_count = sum(1 for log in log_data if not log["open"])
         except Exception:
             logger.error("An error occurred while posting logs to the database.", exc_info=True)
-            log_url = log_count = None
             # ensure core functionality still works
 
         self.ready = True
@@ -1168,7 +1174,7 @@ class Thread:
         after: int = 0,
         silent: bool = False,
         delete_channel: bool = True,
-        message: str = None,
+        message: str | None = None,
         auto_close: bool = False,
     ) -> None:
         """Close a thread now or after a set time in seconds"""
@@ -1207,7 +1213,7 @@ class Thread:
             closer: discord.Member | discord.User,
             silent=False,
             delete_channel=True,
-            message=None,
+            message: str | None = None,
             scheduled=False,
     ):
         # Proactively disable any DM thread-creation menu so users can't keep interacting
@@ -1711,7 +1717,7 @@ class Thread:
 
         # Log as 'note' type for logviewer
         self.bot.loop.create_task(
-            self.bot.api.append_log(message, message_id=msg.id, channel_id=self.channel.id, type_="note")
+            self.bot.api.append_log(message, message_id=msg.id, channel_id=self.channel.id, type_="note", thread_key = self.key)
         )
 
         return msg
@@ -1852,6 +1858,7 @@ class Thread:
                         message,
                         message_id=msg.id,
                         channel_id=self.channel.id,
+                        thread_key=self.key,
                         type_="anonymous" if anonymous else "thread_message",
                     )
                 )
@@ -1963,7 +1970,7 @@ class Thread:
             await self.wait_until_ready()
 
         if not from_mod and not note:
-            self.bot.loop.create_task(self.bot.api.append_log(message, channel_id=self.channel.id))
+            self.bot.loop.create_task(self.bot.api.append_log(message, channel_id=self.channel.id, thread_key=self.key))
 
         destination = destination or self.channel
 
@@ -1975,6 +1982,7 @@ class Thread:
         # snooze-aware typing block below to handle typing and NotFound cases robustly.
 
         author = message.author
+        assert self.bot.guild is not None
         member = self.bot.guild.get_member(author.id)
         if member:
             avatar_url = member.display_avatar.url
@@ -2083,13 +2091,15 @@ class Thread:
 
         ext = [(a.url, a.filename, False) for a in message.attachments]
 
-        images = []
-        attachments = []
-        for attachment in ext:
-            if is_image_url(attachment[0]):
-                images.append(attachment)
-            else:
-                attachments.append(attachment)
+        images: list[tuple[str, str | None, bool]] = []
+        attachments: list[tuple[str, str, bool]] = []
+
+        for attachment in message.attachments:
+            if attachment.content_type in ["image/png", "image/jpeg", "image/gif", "video/webm", "video/mp4"]:
+                images.append((attachment.url, attachment.filename, False))
+            else: 
+                attachments.append((attachment.url, attachment.filename, False))
+
 
         image_urls = re.findall(
             r"http[s]?:\/\/(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+",

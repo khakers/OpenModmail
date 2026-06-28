@@ -35,9 +35,7 @@ max-complexity = 25
 
 
 [tool.pdm]
-plugins = [
-    "sync-pre-commit-lock"
-]
+plugins = ["sync-pre-commit-lock"]
 
 [[tool.pdm.source]]
 name = "pypi"
@@ -60,9 +58,7 @@ name = "Discord-OpenModmail"
 version = "5.0.0-alpha.2"
 description = "Fork² of a feature rich Discord Modmail bot written in Python."
 license = 'AGPL-3.0-only'
-authors = [
-    {name = "", email = ""},
-]
+authors = [{ name = "", email = "contact@khakers.dev" }]
 dependencies = [
     "aiohttp~=3.13.2",
     "colorama~=0.4.6",
@@ -82,6 +78,7 @@ dependencies = [
     "setuptools>=69.0.3",
     "packaging>=24.1",
     "lottie>=0.7.2",
+    "boto3>=1.26.0",                             # S3 attachment archival support
 ]
 requires-python = ">=3.12"
 readme = "README.md"
@@ -112,4 +109,5 @@ dev = [
     "tomli",
     "typing-extensions==4.6.3",
     "pre-commit",
+    "boto3-stubs[s3]>=1.43.34",
 ]

@@ -1,5 +1,6 @@
 import secrets
 import sys
+import typing
 from json import JSONDecodeError
 from typing import Any, Dict, Optional, Union
 
@@ -12,6 +13,10 @@ from pymongo.errors import ConfigurationError
 from pymongo.uri_parser import parse_uri
 
 from core.models import InvalidConfigError, getLogger
+from core.s3_archive import S3ArchiveConfig, S3AttachmentArchiver
+
+if typing.TYPE_CHECKING:
+    from bot import ModmailBot
 
 logger = getLogger(__name__)
 
@@ -299,7 +304,7 @@ class ApiClient:
         The bot's current running `ClientSession`.
     """
 
-    def __init__(self, bot, db):
+    def __init__(self, bot: "ModmailBot", db):
         self.bot = bot
         self.db = db
         self.session = bot.session
@@ -675,10 +680,63 @@ class MongoDBClient(ApiClient):
         *,
         message_id: str | int = "",
         channel_id: str | int = "",
+        thread_key: str,
         type_: str = "thread_message",
     ) -> dict:
         channel_id = str(channel_id) or str(message.channel.id)
         message_id = str(message_id) or str(message.id)
+
+        # Build attachments list with base metadata
+        attachments = [
+            {
+                "id": a.id,
+                "filename": a.filename,
+                # In previous versions this was true for both videos and images
+                "is_image": a.content_type and a.content_type.startswith("image/"),
+                "size": a.size,
+                "url": a.url,
+                "content_type": a.content_type,
+                "description": a.description,
+                "type": "openmodmail_discord_v1",
+                "width": a.width,
+                "height": a.height,
+            }
+            for a in message.attachments
+        ]
+
+        # Archive attachments to S3 if configured
+        if message.attachments and self.bot.config.get("s3_enabled"):
+            try:
+                # We use self.bot.user later and should awlways be logged in at the point we are calling this code
+                assert self.bot.user
+                s3_config = S3ArchiveConfig(
+                    enabled=self.bot.config.get("s3_enabled") or False,
+                    bucket=self.bot.config.get("s3_bucket"),
+                    region=self.bot.config.get("s3_region") or "",
+                    access_key_id=self.bot.config.get("s3_access_key_id"),
+                    secret_access_key=self.bot.config.get("s3_secret_access_key"),
+                    endpoint=self.bot.config.get("s3_endpoint"),
+                    # We should always be logged in at this point
+                    key_prefix=self.bot.config.get("s3_key_prefix") or f"modmail/{self.bot.user.id}/attachments/",
+                )
+                archiver = S3AttachmentArchiver(s3_config)
+                
+                s3_metadata_list = await archiver.archive_attachments(
+                    message.attachments,
+                    thread_id=thread_key,
+                    message_id=message_id,
+                )
+                
+                # Merge S3 metadata into attachments
+                for i, att in enumerate(attachments):
+                    meta = s3_metadata_list[i] if i < len(s3_metadata_list) else None
+                    if meta is not None:
+                        att["s3"] = meta
+                        att["type"] = "openmodmail_s3_v1"
+            except Exception as e:
+                logger.error("S3 archival failed for message %s: %s", message_id, e)
+                raise e
+                # Continue without S3 archival; Discord URLs are still available
 
         data = {
             "timestamp": str(message.created_at),
@@ -692,18 +750,7 @@ class MongoDBClient(ApiClient):
             },
             "content": message.content,
             "type": type_,
-            "attachments": [
-                {
-                    "id": a.id,
-                    "filename": a.filename,
-                    # In previous versions this was true for both videos and images
-                    "is_image": a.content_type and a.content_type.startswith("image/"),
-                    "size": a.size,
-                    "url": a.url,
-                    "content_type": a.content_type,
-                }
-                for a in message.attachments
-            ],
+            "attachments": attachments,
             "messageReference": {
                 "message_id": message.reference.message_id,
                 "channel_id": message.reference.channel_id,

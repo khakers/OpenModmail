@@ -142,3 +142,6 @@ stack.yml
 .pdm-python
 
 compose.override.yml
+
+
+s3-data/*
