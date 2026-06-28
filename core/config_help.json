@@ -195,6 +195,16 @@
             "See also: `anon_reply_without_command`, `plain_reply_without_command`."
         ]
     },
+    "ignore_prefix": {
+        "default": "\\0",
+        "description": "Messages that start with this prefix will be ignored by Modmail.",
+        "examples": [
+            "`{prefix}config set ignore_prefix .`"
+        ],
+        "notes": [
+            "`reply_without_command` must be enabled"
+        ]
+    },
     "anon_reply_without_command": {
         "default": "Disabled",
         "description": "Setting this configuration will make all non-command messages sent in the thread channel to be anonymously forwarded to the recipient without the need of `{prefix}reply`.",

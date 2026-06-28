@@ -1525,7 +1525,7 @@ class ModmailBot(commands.Bot):
 
         await self.process_commands(message)
 
-    async def process_commands(self, message):
+    async def process_commands(self, message: discord.Message):
         if message.author.bot:
             return
 
@@ -1593,9 +1593,16 @@ class ModmailBot(commands.Bot):
                     or self.config.get("anon_reply_without_command")
                     or self.config.get("plain_reply_without_command")
                 ):
-                    # When replying without a command in a thread channel, use the raw content
-                    # from the sent message as reply text while still preserving attachments.
-                    await thread.reply(message, message.content, anonymous=anonymous, plain=plain)
+                    # Check to see if the message starts with the ignore prefix
+                    if not message.content.startswith(self.config.get("ignore_prefix")):
+                        # When replying without a command in a thread channel, use the raw content
+                        # from the sent message as reply text while still preserving attachments.
+                        await thread.reply(message, message.content, anonymous=anonymous, plain=plain)
+                    else:
+                        logger.debug(f"Message {message.id} ignored because it started with the ignore_prefix.")
+                        await self.api.append_log(message, type_="internal")
+                else:
+                    await self.api.append_log(message, type_="internal")
             elif ctx.invoked_with:
                 exc = commands.CommandNotFound(f'Command "{ctx.invoked_with}" is not found')
                 self.dispatch("command_error", ctx, exc)
