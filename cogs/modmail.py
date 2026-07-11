@@ -1,18 +1,20 @@
 import asyncio
-import datetime
 import re
-from datetime import timezone
-from itertools import zip_longest
-from types import SimpleNamespace
+import time
+from datetime import datetime, timedelta, timezone
+from itertools import batched
 from typing import List, Literal, Optional, Tuple, Union
 
 import discord
 from dateutil import parser
-from discord.ext import commands
+from discord import Embed
+from discord.ext import commands, tasks
 from discord.ext.commands.cooldowns import BucketType
 from discord.ext.commands.view import StringView
 
-from core import checks
+from bot import ModmailBot, ModmailCommandContext
+from core import blocklist, checks
+from core.blocklist import BlockType
 from core.models import DMDisabled, PermissionLevel, SimilarCategoryConverter, getLogger
 from core.paginator import EmbedPaginatorSession
 from core.thread import Thread
@@ -25,8 +27,90 @@ logger = getLogger(__name__)
 class Modmail(commands.Cog):
     """Commands directly related to Modmail functionality."""
 
-    def __init__(self, bot):
-        self.bot = bot
+    def __init__(self, bot: ModmailBot):
+        self.bot: ModmailBot = bot
+        self._snoozed_cache = []
+        self._auto_unsnooze_task = self.bot.loop.create_task(self.auto_unsnooze_task())
+
+    @staticmethod
+    def _to_utc_datetime(value) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        if isinstance(value, str):
+            try:
+                parsed = parser.isoparse(value)
+            except (TypeError, ValueError):
+                return None
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return None
+
+    async def auto_unsnooze_task(self):
+        await self.bot.wait_until_ready()
+        logger.debug("auto_unsnooze_task")
+        last_db_query: int | float = 0
+        while not self.bot.is_closed():
+            now = time.monotonic()
+            try:
+                # Query DB every 2 minutes
+                if (now - last_db_query) > 120:
+                    snoozed_threads = await self.bot.api.logs.find({"snoozed": True, "open": True}).to_list(
+                        None
+                    )
+                    self._snoozed_cache = snoozed_threads or []
+                    last_db_query = time.monotonic()
+                # Check cache every 10 seconds
+                to_unsnooze = []
+                for thread_data in list(self._snoozed_cache):
+                    snooze_until = thread_data.get("snooze_until")
+                    recipient = thread_data.get("recipient")
+                    if not recipient or not recipient.get("id"):
+                        continue
+                    thread_id = int(recipient.get("id"))
+                    if snooze_until:
+                        dt = self._to_utc_datetime(snooze_until)
+                        if dt is None:
+                            continue
+                        if datetime.now(timezone.utc) >= dt:
+                            to_unsnooze.append(thread_data)
+                for thread_data in to_unsnooze:
+                    recipient = thread_data.get("recipient")
+                    if not recipient or not recipient.get("id"):
+                        continue
+                    thread_id = int(recipient.get("id"))
+                    thread = self.bot.threads.cache.get(thread_id) or await self.bot.threads.find(
+                        id=thread_id
+                    )
+                    if thread and thread.snoozed:
+                        await thread.restore_from_snooze()
+                        logger.info(f"Thread {thread_id} auto-unsnoozed.")
+                        try:
+                            channel = thread.channel
+                            if channel:
+                                await channel.send("⏰ This thread has been automatically unsnoozed.")
+                        except Exception as e:
+                            logger.error(
+                                "Failed to notify channel after auto-unsnooze: %s",
+                                e,
+                            )
+                        self._snoozed_cache.remove(thread_data)
+            except Exception as e:
+                logger.error(f"Error in auto_unsnooze_task: {e}")
+            await asyncio.sleep(10)
+
+    def _resolve_user(self, user_str: str) -> Optional[int]:
+        """Helper to resolve a user from mention, ID, or username."""
+        import re
+
+        if not user_str:
+            return None
+        if user_str.isdigit():
+            return int(user_str)
+        match = re.match(r"<@!?(\d+)>", user_str)
+        if match:
+            return int(match.group(1))
+        return None
 
     @commands.command()
     @trigger_typing
@@ -43,7 +127,8 @@ class Modmail(commands.Cog):
             return await ctx.send(f"You can only setup in the Modmail guild: {self.bot.modmail_guild}.")
 
         if self.bot.main_category is not None:
-            logger.debug("Can't re-setup server, main_category is found.")
+            logger.warning("Can't re-setup server, main_category is found.")
+            logger.debug(f"Current main category: {self.bot.main_category.name}")
             return await ctx.send(f"{self.bot.modmail_guild} is already set up.")
 
         if self.bot.modmail_guild is None:
@@ -142,6 +227,21 @@ class Modmail(commands.Cog):
         """
 
         if name is not None:
+            if name == "compact":
+                embeds = []
+
+                for i, names in enumerate(batched(sorted(self.bot.snippets), 15)):
+                    description = format_description(i, names)
+                    embed = discord.Embed(color=self.bot.main_color, description=description)
+                    embed.set_author(
+                        name="Snippets", icon_url=self.bot.get_guild_icon(guild=ctx.guild, size=128)
+                    )
+                    embeds.append(embed)
+
+                session = EmbedPaginatorSession(ctx, *embeds)
+                await session.run()
+                return
+
             snippet_name = self.bot._resolve_snippet(name)
 
             if snippet_name is None:
@@ -149,25 +249,34 @@ class Modmail(commands.Cog):
             else:
                 val = self.bot.snippets[snippet_name]
                 embed = discord.Embed(
-                    title=f'Snippet - "{snippet_name}":', description=val, color=self.bot.main_color
+                    title=f'Snippet - "{snippet_name}":',
+                    description=val,
+                    color=self.bot.main_color,
                 )
             return await ctx.send(embed=embed)
 
         if not self.bot.snippets:
             embed = discord.Embed(
-                color=self.bot.error_color, description="You dont have any snippets at the moment."
+                color=self.bot.error_color,
+                description="You dont have any snippets at the moment.",
             )
             embed.set_footer(text=f'Check "{self.bot.prefix}help snippet add" to add a snippet.')
-            embed.set_author(name="Snippets", icon_url=self.bot.get_guild_icon(guild=ctx.guild, size=128))
+            embed.set_author(
+                name="Snippets",
+                icon_url=self.bot.get_guild_icon(guild=ctx.guild, size=128),
+            )
             return await ctx.send(embed=embed)
 
-        embeds = []
-
-        for i, names in enumerate(zip_longest(*(iter(sorted(self.bot.snippets)),) * 15)):
-            description = format_description(i, names)
-            embed = discord.Embed(color=self.bot.main_color, description=description)
+        embeds: list[Embed] = [
+            discord.Embed(color=self.bot.main_color) for _ in range((len(self.bot.snippets) + 9) // 10)
+        ]
+        for embed in embeds:
             embed.set_author(name="Snippets", icon_url=self.bot.get_guild_icon(guild=ctx.guild, size=128))
-            embeds.append(embed)
+
+        for i, snippet in enumerate(sorted(self.bot.snippets.items())):
+            embeds[i // 10].add_field(
+                name=snippet[0], value=return_or_truncate(snippet[1], 350), inline=False
+            )
 
         session = EmbedPaginatorSession(ctx, *embeds)
         await session.run()
@@ -191,61 +300,48 @@ class Modmail(commands.Cog):
 
         return await ctx.send(embed=embed)
 
+    def _validate_snippet_name(self, name):
+        if self.bot.get_command(name):
+            return f"A command with the same name already exists: `{name}`."
+        elif name in self.bot.snippets:
+            return f"Snippet `{name}` already exists."
+        elif name in self.bot.aliases:
+            return f"An alias that shares the same name exists: `{name}`."
+        elif len(name) > 120:
+            return "Snippet names cannot be longer than 120 characters."
+        return None
+
     @snippet.command(name="add", aliases=["create", "make"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     async def snippet_add(self, ctx, name: str.lower, *, value: commands.clean_content):
         """
         Add a snippet.
 
-        Simply to add a snippet, do: ```
-        {prefix}snippet add hey hello there :)
-        ```
+        Simply to add a snippet, do:
+        `{prefix}snippet add hey hello there :)`
         then when you type `{prefix}hey`, "hello there :)" will get sent to the recipient.
 
-        To add a multi-word snippet name, use quotes: ```
-        {prefix}snippet add "two word" this is a two word snippet.
-        ```
+        To add a multi-word snippet name, use quotes:
+        `{prefix}snippet add "two word" this is a two word snippet.`
         """
-        if self.bot.get_command(name):
-            embed = discord.Embed(
-                title="Error",
-                color=self.bot.error_color,
-                description=f"A command with the same name already exists: `{name}`.",
-            )
-            return await ctx.send(embed=embed)
-        elif name in self.bot.snippets:
-            embed = discord.Embed(
-                title="Error",
-                color=self.bot.error_color,
-                description=f"Snippet `{name}` already exists.",
-            )
-            return await ctx.send(embed=embed)
-
-        if name in self.bot.aliases:
-            embed = discord.Embed(
-                title="Error",
-                color=self.bot.error_color,
-                description=f"An alias that shares the same name exists: `{name}`.",
-            )
-            return await ctx.send(embed=embed)
-
-        if len(name) > 120:
+        if self._validate_snippet_name(name):
             embed = discord.Embed(
                 title="Error",
                 color=self.bot.error_color,
                 description="Snippet names cannot be longer than 120 characters.",
             )
-            return await ctx.send(embed=embed)
+            await ctx.send(embed=embed)
+        else:
 
-        self.bot.snippets[name] = value
-        await self.bot.config.update()
+            self.bot.snippets[name] = value
+            await self.bot.config.update()
 
-        embed = discord.Embed(
-            title="Added snippet",
-            color=self.bot.main_color,
-            description="Successfully created snippet.",
-        )
-        return await ctx.send(embed=embed)
+            embed = discord.Embed(
+                title="Added snippet",
+                color=self.bot.main_color,
+                description="Successfully created snippet.",
+            )
+            await ctx.send(embed=embed)
 
     def _fix_aliases(self, snippet_being_deleted: str) -> Tuple[List[str]]:
         """
@@ -374,6 +470,32 @@ class Modmail(commands.Cog):
             embed = create_not_found_embed(name, self.bot.snippets.keys(), "Snippet")
         await ctx.send(embed=embed)
 
+    @snippet.command(name="rename")
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    async def snippet_rename(self, ctx, name: str.lower, *, value):
+        """
+        Rename a snippet.
+
+        To rename a multi-word snippet name, use quotes: ```
+        {prefix}snippet rename "two word" this is a new two word snippet.
+        ```
+        """
+        if name not in self.bot.snippets:
+            embed = create_not_found_embed(name, self.bot.snippets.keys(), "Snippet")
+        else:
+            error_msg = self._validate_snippet_name(value)
+            if error_msg:
+                embed = discord.Embed(title="Error", color=self.bot.error_color, description=error_msg)
+            else:
+                self.bot.snippets[value] = self.bot.snippets.pop(name)
+                await self.bot.config.update()
+                embed = discord.Embed(
+                    title="Renamed snippet",
+                    color=self.bot.main_color,
+                    description=f'`{name}` has been renamed to "{value}".',
+                )
+        await ctx.send(embed=embed)
+
     @commands.command(usage="<category> [options]")
     @checks.has_permissions(PermissionLevel.MODERATOR)
     @checks.thread_only()
@@ -417,7 +539,10 @@ class Modmail(commands.Cog):
             silent = any(word in silent_words for word in options.split())
 
         await thread.channel.move(
-            category=category, end=True, sync_permissions=True, reason=f"{ctx.author} moved this thread."
+            category=category,
+            end=True,
+            sync_permissions=True,
+            reason=f"{ctx.author} moved this thread.",
         )
 
         if self.bot.config["thread_move_notify"] and not silent:
@@ -439,12 +564,15 @@ class Modmail(commands.Cog):
         sent_emoji, _ = await self.bot.retrieve_emoji()
         await self.bot.add_reaction(ctx.message, sent_emoji)
 
-    async def send_scheduled_close_message(self, ctx, after, silent=False):
-        human_delta = human_timedelta(after.dt)
+    async def send_scheduled_close_message(self, ctx, after: UserFriendlyTime, silent=False):
+        """Send a scheduled close notice only to the staff thread channel.
 
+        Uses Discord relative timestamp formatting for better UX.
+        """
+        ts = int((after.dt if after.dt.tzinfo else after.dt.replace(tzinfo=timezone.utc)).timestamp())
         embed = discord.Embed(
             title="Scheduled close",
-            description=f"This thread will{' silently' if silent else ''} close in {human_delta}.",
+            description=f"This thread will{' silently' if silent else ''} close <t:{ts}:R>.",
             color=self.bot.error_color,
         )
 
@@ -454,7 +582,9 @@ class Modmail(commands.Cog):
         embed.set_footer(text="Closing will be cancelled if a thread message is sent.")
         embed.timestamp = after.dt
 
-        await ctx.send(embed=embed)
+        thread = getattr(ctx, "thread", None)
+        if thread and ctx.channel == thread.channel:
+            await thread.channel.send(embed=embed)
 
     @commands.command(usage="[after] [close message]")
     @checks.has_permissions(PermissionLevel.SUPPORTER)
@@ -495,7 +625,8 @@ class Modmail(commands.Cog):
             if thread.close_task is not None or thread.auto_close_task is not None:
                 await thread.cancel_closure(all=True)
                 embed = discord.Embed(
-                    color=self.bot.error_color, description="Scheduled close has been cancelled."
+                    color=self.bot.error_color,
+                    description="Scheduled close has been cancelled.",
                 )
             else:
                 embed = discord.Embed(
@@ -594,7 +725,8 @@ class Modmail(commands.Cog):
             mentions.remove(mention)
             await self.bot.config.update()
             embed = discord.Embed(
-                color=self.bot.main_color, description=f"{mention} will no longer be notified."
+                color=self.bot.main_color,
+                description=f"{mention} will no longer be notified.",
             )
         return await ctx.send(embed=embed)
 
@@ -677,7 +809,8 @@ class Modmail(commands.Cog):
     @checks.thread_only()
     async def nsfw(self, ctx):
         """Flags a Modmail thread as NSFW (not safe for work)."""
-        await ctx.channel.edit(nsfw=True)
+        await ctx.thread.set_nsfw_status(True)
+
         sent_emoji, _ = await self.bot.retrieve_emoji()
         await self.bot.add_reaction(ctx.message, sent_emoji)
 
@@ -686,7 +819,8 @@ class Modmail(commands.Cog):
     @checks.thread_only()
     async def sfw(self, ctx):
         """Flags a Modmail thread as SFW (safe for work)."""
-        await ctx.channel.edit(nsfw=False)
+        await ctx.thread.set_nsfw_status(False)
+
         sent_emoji, _ = await self.bot.retrieve_emoji()
         await self.bot.add_reaction(ctx.message, sent_emoji)
 
@@ -695,11 +829,18 @@ class Modmail(commands.Cog):
     @checks.thread_only()
     async def msglink(self, ctx, message_id: int):
         """Retrieves the link to a message in the current thread."""
-        try:
-            message = await ctx.thread.recipient.fetch_message(message_id)
-        except discord.NotFound:
+        found = False
+        for recipient in ctx.thread.recipients:
+            try:
+                message = await recipient.fetch_message(message_id)
+                found = True
+                break
+            except discord.NotFound:
+                continue
+        if not found:
             embed = discord.Embed(
-                color=self.bot.error_color, description="Message not found or no longer exists."
+                color=self.bot.error_color,
+                description="Message not found or no longer exists.",
             )
         else:
             embed = discord.Embed(color=self.bot.main_color, description=message.jump_url)
@@ -753,7 +894,6 @@ class Modmail(commands.Cog):
             embed.add_field(name="Preview", value=format_preview(entry["messages"]), inline=False)
 
             if closer is not None:
-                # BUG: Currently, logviewer can't display logs without a closer.
                 embed.add_field(name="Link", value=log_url)
             else:
                 logger.debug("Invalid log entry: no closer.")
@@ -769,7 +909,7 @@ class Modmail(commands.Cog):
     @commands.cooldown(1, 600, BucketType.channel)
     async def title(self, ctx, *, name: str):
         """Sets title for a thread"""
-        await ctx.thread.set_title(name)
+        await ctx.thread.set_title(name, ctx.channel.id)
         sent_emoji, _ = await self.bot.retrieve_emoji()
         await ctx.message.pin()
         await self.bot.add_reaction(ctx.message, sent_emoji)
@@ -843,7 +983,10 @@ class Modmail(commands.Cog):
             )
             if self.bot.config["show_timestamp"]:
                 em.timestamp = discord.utils.utcnow()
-            em.set_footer(text=str(ctx.author), icon_url=ctx.author.display_avatar.url)
+            em.set_footer(
+                text=str(ctx.author),
+                icon_url=ctx.author.display_avatar.url if ctx.author.display_avatar else None,
+            )
             for u in users:
                 to_exec.append(u.send(embed=em))
 
@@ -859,7 +1002,9 @@ class Modmail(commands.Cog):
             )
             if self.bot.config["show_timestamp"]:
                 em.timestamp = discord.utils.utcnow()
-            em.set_footer(text=f"{users[0]}", icon_url=users[0].display_avatar.url)
+            em.set_footer(
+                text=f"{users[0]}", icon_url=users[0].display_avatar.url if users[0].display_avatar else None
+            )
 
             for i in ctx.thread.recipients:
                 if i not in users:
@@ -927,7 +1072,8 @@ class Modmail(commands.Cog):
         to_exec = []
         if not silent:
             description = self.bot.formatter.format(
-                self.bot.config["private_removed_from_group_response"], moderator=ctx.author
+                self.bot.config["private_removed_from_group_response"],
+                moderator=ctx.author,
             )
             em = discord.Embed(
                 title=self.bot.config["private_removed_from_group_title"],
@@ -936,7 +1082,10 @@ class Modmail(commands.Cog):
             )
             if self.bot.config["show_timestamp"]:
                 em.timestamp = discord.utils.utcnow()
-            em.set_footer(text=str(ctx.author), icon_url=ctx.author.display_avatar.url)
+            em.set_footer(
+                text=str(ctx.author),
+                icon_url=ctx.author.display_avatar.url if ctx.author.display_avatar else None,
+            )
             for u in users:
                 to_exec.append(u.send(embed=em))
 
@@ -952,7 +1101,9 @@ class Modmail(commands.Cog):
             )
             if self.bot.config["show_timestamp"]:
                 em.timestamp = discord.utils.utcnow()
-            em.set_footer(text=f"{users[0]}", icon_url=users[0].display_avatar.url)
+            em.set_footer(
+                text=f"{users[0]}", icon_url=users[0].display_avatar.url if users[0].display_avatar else None
+            )
 
             for i in ctx.thread.recipients:
                 if i not in users:
@@ -1026,11 +1177,11 @@ class Modmail(commands.Cog):
                 tag = str(get_top_role(ctx.author, self.bot.config["use_hoisted_top_role"]))
             name = self.bot.config["anon_username"]
             if name is None:
-                name = tag
+                name = "Anonymous"
             avatar_url = self.bot.config["anon_avatar_url"]
             if avatar_url is None:
                 avatar_url = self.bot.get_guild_icon(guild=ctx.guild, size=128)
-            em.set_footer(text=name, icon_url=avatar_url)
+            em.set_footer(text=name, icon_url=avatar_url if avatar_url else None)
 
             for u in users:
                 to_exec.append(u.send(embed=em))
@@ -1046,7 +1197,9 @@ class Modmail(commands.Cog):
             )
             if self.bot.config["show_timestamp"]:
                 em.timestamp = discord.utils.utcnow()
-            em.set_footer(text=f"{users[0]}", icon_url=users[0].display_avatar.url)
+            em.set_footer(
+                text=f"{users[0]}", icon_url=users[0].display_avatar.url if users[0].display_avatar else None
+            )
 
             for i in ctx.thread.recipients:
                 if i not in users:
@@ -1115,11 +1268,11 @@ class Modmail(commands.Cog):
                 tag = str(get_top_role(ctx.author, self.bot.config["use_hoisted_top_role"]))
             name = self.bot.config["anon_username"]
             if name is None:
-                name = tag
+                name = "Anonymous"
             avatar_url = self.bot.config["anon_avatar_url"]
             if avatar_url is None:
                 avatar_url = self.bot.get_guild_icon(guild=ctx.guild, size=128)
-            em.set_footer(text=name, icon_url=avatar_url)
+            em.set_footer(text=name, icon_url=avatar_url if avatar_url else None)
 
             for u in users:
                 to_exec.append(u.send(embed=em))
@@ -1135,7 +1288,9 @@ class Modmail(commands.Cog):
             )
             if self.bot.config["show_timestamp"]:
                 em.timestamp = discord.utils.utcnow()
-            em.set_footer(text=f"{users[0]}", icon_url=users[0].display_avatar.url)
+            em.set_footer(
+                text=f"{users[0]}", icon_url=users[0].display_avatar.url if users[0].display_avatar else None
+            )
 
             for i in ctx.thread.recipients:
                 if i not in users:
@@ -1159,12 +1314,13 @@ class Modmail(commands.Cog):
         `user` may be a user ID, mention, or name.
         """
 
-        await ctx.typing()
+        async with safe_typing(ctx):
+            pass
 
         if not user:
             thread = ctx.thread
             if not thread:
-                raise commands.MissingRequiredArgument(SimpleNamespace(name="member"))
+                raise commands.MissingRequiredArgument(DummyParam("user"))
             user = thread.recipient or await self.bot.get_or_fetch_user(thread.id)
 
         default_avatar = "https://cdn.discordapp.com/embed/avatars/0.png"
@@ -1206,6 +1362,28 @@ class Modmail(commands.Cog):
                 description="No log entries have been found for that query.",
             )
             return await ctx.send(embed=embed)
+
+        session = EmbedPaginatorSession(ctx, *embeds)
+        await session.run()
+
+    @logs.command(name="key", aliases=["id"])
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    async def logs_key(self, ctx, key: str):
+        """
+        Get the log link for the specified log key.
+        """
+        icon_url = ctx.author.avatar.url
+
+        logs = await self.bot.api.find_log_entry(key)
+
+        if not logs:
+            embed = discord.Embed(
+                color=self.bot.error_color,
+                description=f"Log entry `{key}` not found.",
+            )
+            return await ctx.send(embed=embed)
+
+        embeds = self.format_log_embeds(logs, avatar_url=icon_url)
 
         session = EmbedPaginatorSession(ctx, *embeds)
         await session.run()
@@ -1269,7 +1447,8 @@ class Modmail(commands.Cog):
         Provide a `limit` to specify the maximum number of logs the bot should find.
         """
 
-        await ctx.typing()
+        async with safe_typing(ctx):
+            pass
 
         entries = await self.bot.api.search_by_text(query, limit)
 
@@ -1296,10 +1475,10 @@ class Modmail(commands.Cog):
         automatically embedding image URLs.
         """
 
+        # Ensure logs record only the reply text, not the command.
         ctx.message.content = msg
-
-        async with ctx.typing():
-            await ctx.thread.reply(ctx.message)
+        async with safe_typing(ctx):
+            await ctx.thread.reply(ctx.message, msg)
 
     @commands.command(aliases=["formatreply"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
@@ -1317,11 +1496,15 @@ class Modmail(commands.Cog):
         automatically embedding image URLs.
         """
         msg = self.bot.formatter.format(
-            msg, channel=ctx.channel, recipient=ctx.thread.recipient, author=ctx.message.author
+            msg,
+            channel=ctx.channel,
+            recipient=ctx.thread.recipient,
+            author=ctx.message.author,
         )
+        # Ensure logs record only the reply text, not the command.
         ctx.message.content = msg
-        async with ctx.typing():
-            await ctx.thread.reply(ctx.message)
+        async with safe_typing(ctx):
+            await ctx.thread.reply(ctx.message, msg)
 
     @commands.command(aliases=["formatanonreply"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
@@ -1339,11 +1522,15 @@ class Modmail(commands.Cog):
         automatically embedding image URLs.
         """
         msg = self.bot.formatter.format(
-            msg, channel=ctx.channel, recipient=ctx.thread.recipient, author=ctx.message.author
+            msg,
+            channel=ctx.channel,
+            recipient=ctx.thread.recipient,
+            author=ctx.message.author,
         )
+        # Ensure logs record only the reply text, not the command.
         ctx.message.content = msg
-        async with ctx.typing():
-            await ctx.thread.reply(ctx.message, anonymous=True)
+        async with safe_typing(ctx):
+            await ctx.thread.reply(ctx.message, msg, anonymous=True)
 
     @commands.command(aliases=["formatplainreply"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
@@ -1361,16 +1548,20 @@ class Modmail(commands.Cog):
         automatically embedding image URLs.
         """
         msg = self.bot.formatter.format(
-            msg, channel=ctx.channel, recipient=ctx.thread.recipient, author=ctx.message.author
+            msg,
+            channel=ctx.channel,
+            recipient=ctx.thread.recipient,
+            author=ctx.message.author,
         )
+        # Ensure logs record only the reply text, not the command.
         ctx.message.content = msg
-        async with ctx.typing():
-            await ctx.thread.reply(ctx.message, plain=True)
+        async with safe_typing(ctx):
+            await ctx.thread.reply(ctx.message, msg, plain=True)
 
     @commands.command(aliases=["formatplainanonreply"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     @checks.thread_only()
-    async def fpareply(self, ctx, *, msg: str = ""):
+    async def fpareply(self, ctx: ModmailCommandContext, *, msg: str = ""):
         """
         Anonymously reply to a Modmail thread with variables and a plain message.
 
@@ -1382,17 +1573,23 @@ class Modmail(commands.Cog):
         Supports attachments and images as well as
         automatically embedding image URLs.
         """
+        assert ctx.thread is not None
+
         msg = self.bot.formatter.format(
-            msg, channel=ctx.channel, recipient=ctx.thread.recipient, author=ctx.message.author
+            msg,
+            channel=ctx.channel,
+            recipient=ctx.thread.recipient,
+            author=ctx.message.author,
         )
+        # Ensure logs record only the reply text, not the command.
         ctx.message.content = msg
-        async with ctx.typing():
-            await ctx.thread.reply(ctx.message, anonymous=True, plain=True)
+        async with safe_typing(ctx):
+            await ctx.thread.reply(ctx.message, msg, anonymous=True, plain=True)
 
     @commands.command(aliases=["anonreply", "anonymousreply"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     @checks.thread_only()
-    async def areply(self, ctx, *, msg: str = ""):
+    async def areply(self, ctx: ModmailCommandContext, *, msg: str = ""):
         """
         Reply to a thread anonymously.
 
@@ -1402,64 +1599,86 @@ class Modmail(commands.Cog):
         Edit the `anon_username`, `anon_avatar_url`
         and `anon_tag` config variables to do so.
         """
+        assert ctx.thread is not None
+        # Ensure logs record only the reply text, not the command.
         ctx.message.content = msg
-        async with ctx.typing():
-            await ctx.thread.reply(ctx.message, anonymous=True)
+        async with safe_typing(ctx):
+            await ctx.thread.reply(ctx.message, msg, anonymous=True)
 
     @commands.command(aliases=["plainreply"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     @checks.thread_only()
-    async def preply(self, ctx, *, msg: str = ""):
+    async def preply(self, ctx: ModmailCommandContext, *, msg: str = ""):
         """
         Reply to a Modmail thread with a plain message.
 
         Supports attachments and images as well as
         automatically embedding image URLs.
         """
+        assert ctx.thread is not None
+        # Ensure logs record only the reply text, not the command.
         ctx.message.content = msg
-        async with ctx.typing():
-            await ctx.thread.reply(ctx.message, plain=True)
+        async with safe_typing(ctx):
+            await ctx.thread.reply(ctx.message, msg, plain=True)
 
     @commands.command(aliases=["plainanonreply", "plainanonymousreply"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     @checks.thread_only()
-    async def pareply(self, ctx, *, msg: str = ""):
+    async def pareply(self, ctx: ModmailCommandContext, *, msg: str = ""):
         """
         Reply to a Modmail thread with a plain message and anonymously.
 
         Supports attachments and images as well as
         automatically embedding image URLs.
         """
+        assert ctx.thread is not None
+
+        # Ensure logs record only the reply text, not the command.
         ctx.message.content = msg
-        async with ctx.typing():
-            await ctx.thread.reply(ctx.message, anonymous=True, plain=True)
+        async with safe_typing(ctx):
+            await ctx.thread.reply(ctx.message, msg, anonymous=True, plain=True)
+
+    async def _create_note(
+        self, message: discord.Message, msg: str, thread: Thread, persistent: bool
+    ) -> Optional[discord.Message]:
+        message.content = msg
+        async with safe_typing(message.channel):
+            note_message = await thread.note(message, persistent)
+            await note_message.pin()
+        if persistent:
+            await self.bot.api.create_note(
+                recipient=thread.recipient, message=message, message_id=note_message.id
+            )
+        # Acknowledge and clean up the invoking command message
+        sent_emoji, _ = await self.bot.retrieve_emoji()
+        await self.bot.add_reaction(message, sent_emoji)
+        try:
+            await message.delete(delay=3)
+        except (discord.Forbidden, discord.NotFound) as e:
+            logger.error(f"Failed to delete note command message: {e}", exc_info=True)
 
     @commands.group(invoke_without_command=True)
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     @checks.thread_only()
-    async def note(self, ctx, *, msg: str = ""):
+    async def note(self, ctx: ModmailCommandContext, *, msg: str = ""):
         """
         Take a note about the current thread.
 
         Useful for noting context.
         """
-        ctx.message.content = msg
-        async with ctx.typing():
-            msg = await ctx.thread.note(ctx.message)
-            await msg.pin()
+        assert ctx.thread is not None
+
+        await self._create_note(ctx.message, msg, ctx.thread, persistent=False)
 
     @note.command(name="persistent", aliases=["persist"])
     @checks.has_permissions(PermissionLevel.SUPPORTER)
     @checks.thread_only()
-    async def note_persistent(self, ctx, *, msg: str = ""):
+    async def note_persistent(self, ctx: ModmailCommandContext, *, msg: str = ""):
         """
         Take a persistent note about the current user.
         """
-        ctx.message.content = msg
-        async with ctx.typing():
-            msg = await ctx.thread.note(ctx.message, persistent=True)
-            await msg.pin()
-        await self.bot.api.create_note(recipient=ctx.thread.recipient, message=ctx.message, message_id=msg.id)
+        assert ctx.thread is not None
+        await self._create_note(ctx.message, msg, ctx.thread, persistent=True)
 
     @commands.command()
     @checks.has_permissions(PermissionLevel.SUPPORTER)
@@ -1477,11 +1696,11 @@ class Modmail(commands.Cog):
 
         try:
             await thread.edit_message(message_id, message)
-        except ValueError:
+        except ValueError as e:
             return await ctx.send(
                 embed=discord.Embed(
                     title="Failed",
-                    description="Cannot find a message to edit. Plain messages are not supported.",
+                    description=str(e),
                     color=self.bot.error_color,
                 )
             )
@@ -1491,8 +1710,31 @@ class Modmail(commands.Cog):
 
     @commands.command()
     @checks.has_permissions(PermissionLevel.REGULAR)
-    async def selfcontact(self, ctx):
+    async def selfcontact(self, ctx: ModmailCommandContext):
         """Creates a thread with yourself"""
+        # Check if user already has a thread
+        existing_thread = await self.bot.threads.find(recipient=ctx.author)
+        if existing_thread:
+            if existing_thread.snoozed:
+                # Unsnooze the thread
+                msg = await ctx.send("ℹ️ You had a snoozed thread. Unsnoozing now...")
+                await existing_thread.restore_from_snooze()
+                self.bot.threads.cache[existing_thread.id] = existing_thread
+                try:
+                    await msg.delete(delay=10)
+                except (discord.Forbidden, discord.NotFound):
+                    pass
+                return
+            else:
+                # Thread already exists and is active
+                embed = discord.Embed(
+                    title="Thread not created",
+                    description=f"A thread for you already exists in <#{existing_thread.channel.id}>.",
+                    color=self.bot.error_color,
+                )
+                await ctx.send(embed=embed, delete_after=10)
+                return
+
         await ctx.invoke(self.contact, users=[ctx.author])
 
     @commands.command(usage="<user> [category] [options]")
@@ -1501,7 +1743,12 @@ class Modmail(commands.Cog):
         self,
         ctx,
         users: commands.Greedy[
-            Union[Literal["silent", "silently"], discord.Member, discord.User, discord.Role]
+            Union[
+                Literal["silent", "silently"],
+                discord.Member,
+                discord.User,
+                discord.Role,
+            ]
         ],
         *,
         category: SimilarCategoryConverter = None,
@@ -1551,9 +1798,14 @@ class Modmail(commands.Cog):
                 users += u.members
                 users.remove(u)
 
+        snoozed_users = []
         for u in list(users):
             exists = await self.bot.threads.find(recipient=u)
             if exists:
+                # Check if thread is snoozed
+                if exists.snoozed:
+                    snoozed_users.append(u)
+                    continue
                 errors.append(f"A thread for {u} already exists.")
                 if exists.channel:
                     errors[-1] += f" in {exists.channel.mention}"
@@ -1562,10 +1814,27 @@ class Modmail(commands.Cog):
             elif u.bot:
                 errors.append(f"{u} is a bot, cannot add to thread.")
                 users.remove(u)
-            elif await self.bot.is_blocked(u):
+            elif (await self.bot.blocklist.is_user_blocked(u))[0]:
                 ref = f"{u.mention} is" if ctx.author != u else "You are"
                 errors.append(f"{ref} currently blocked from contacting {self.bot.user.name}.")
                 users.remove(u)
+
+        # Handle snoozed users - unsnooze them and return early
+        if snoozed_users:
+            for u in snoozed_users:
+                thread = await self.bot.threads.find(recipient=u)
+                if thread and thread.snoozed:
+                    msg = await ctx.send(f"ℹ️ {u.mention} had a snoozed thread. Unsnoozing now...")
+                    await thread.restore_from_snooze()
+                    self.bot.threads.cache[thread.id] = thread
+                    try:
+                        await msg.delete(delay=10)
+                    except (discord.Forbidden, discord.NotFound) as e:
+                        logger.debug(
+                            f"Failed to delete message (likely already deleted or lacking permissions): {e}"
+                        )
+            # Don't try to create a new thread - we just unsnoozed existing ones
+            return
 
         if len(users) > 5:
             errors.append("Group conversations only support 5 users.")
@@ -1579,11 +1848,14 @@ class Modmail(commands.Cog):
                 title = None
 
             if manual_trigger:  # not react to contact
-                embed = discord.Embed(title=title, color=self.bot.error_color, description="\n".join(errors))
+                embed = discord.Embed(
+                    title=title,
+                    color=self.bot.error_color,
+                    description="\n".join(errors),
+                )
                 await ctx.send(embed=embed, delete_after=10)
 
             if not users:
-                # end
                 return
 
         creator = ctx.author if manual_trigger else users[0]
@@ -1593,12 +1865,16 @@ class Modmail(commands.Cog):
             creator=creator,
             category=category,
             manual_trigger=manual_trigger,
+            # The minimum character check is enforced in ThreadManager.create
         )
 
         if thread.cancelled:
             return
 
-        if self.bot.config["dm_disabled"] in (DMDisabled.NEW_THREADS, DMDisabled.ALL_THREADS):
+        if self.bot.config["dm_disabled"] in (
+            DMDisabled.NEW_THREADS,
+            DMDisabled.ALL_THREADS,
+        ):
             logger.info("Contacting user %s when Modmail DM is disabled.", users[0])
 
         if not silent and not self.bot.config.get("thread_contact_silently"):
@@ -1616,7 +1892,9 @@ class Modmail(commands.Cog):
             )
             if self.bot.config["show_timestamp"]:
                 em.timestamp = discord.utils.utcnow()
-            em.set_footer(text=f"{creator}", icon_url=creator.display_avatar.url)
+            em.set_footer(
+                text=f"{creator}", icon_url=creator.display_avatar.url if creator.display_avatar else None
+            )
 
             for u in users:
                 await u.send(embed=em)
@@ -1636,8 +1914,10 @@ class Modmail(commands.Cog):
         if manual_trigger:
             sent_emoji, _ = await self.bot.retrieve_emoji()
             await self.bot.add_reaction(ctx.message, sent_emoji)
-            await asyncio.sleep(5)
-            await ctx.message.delete()
+            try:
+                await ctx.message.delete(delay=5)
+            except (discord.Forbidden, discord.NotFound):
+                pass
 
     @commands.group(invoke_without_command=True)
     @checks.has_permissions(PermissionLevel.MODERATOR)
@@ -1645,57 +1925,34 @@ class Modmail(commands.Cog):
     async def blocked(self, ctx):
         """Retrieve a list of blocked users."""
 
-        roles, users, now = [], [], discord.utils.utcnow()
+        roles, users = [], []
 
-        blocked_users = list(self.bot.blocked_users.items())
-        for id_, data in blocked_users:
-            blocked_by_id = data["blocked_by"]
-            blocked_at = parser.parse(data["blocked_at"])
-            human_blocked_at = discord.utils.format_dt(blocked_at, style="R")
-            if "until" in data:
-                blocked_until = parser.parse(data["until"])
-                human_blocked_until = discord.utils.format_dt(blocked_until, style="R")
+        blocked: list[blocklist.BlocklistEntry] = await self.bot.blocklist.get_all_blocks()
+
+        for item in blocked:
+            human_blocked_at = discord.utils.format_dt(item.timestamp, style="R")
+            if item.expires_at is not None:
+                human_blocked_until = discord.utils.format_dt(item.expires_at, style="R")
             else:
-                blocked_until = human_blocked_until = "Permanent"
+                human_blocked_until = "Permanent"
 
-            if isinstance(blocked_until, datetime.datetime) and blocked_until < now:
-                self.bot.blocked_users.pop(str(id_))
-                logger.debug("No longer blocked, user %s.", id_)
-                continue
-
-            string = f"<@{id_}> ({human_blocked_until})"
-            string += f"\n- Issued {human_blocked_at} by <@{blocked_by_id}>"
-
-            reason = data.get("reason")
-            if reason:
-                string += f"\n- Blocked for {reason}"
-
-            users.append(string + "\n")
-
-        blocked_roles = list(self.bot.blocked_roles.items())
-        for id_, data in blocked_roles:
-            blocked_by_id = data["blocked_by"]
-            blocked_at = parser.parse(data["blocked_at"])
-            human_blocked_at = discord.utils.format_dt(blocked_at, style="R")
-            if "until" in data:
-                blocked_until = parser.parse(data["until"])
-                human_blocked_until = discord.utils.format_dt(blocked_until, style="R")
+            if item.type == blocklist.BlockType.USER:
+                string = f"<@{item.id}>"
             else:
-                blocked_until = human_blocked_until = "Permanent"
+                string = f"<@&{item.id}>"
 
-            if isinstance(blocked_until, datetime.datetime) and blocked_until < now:
-                self.bot.blocked_users.pop(str(id_))
-                logger.debug("No longer blocked, user %s.", id_)
-                continue
+            string += f" ({human_blocked_until})"
 
-            string = f"<@&{id_}> ({human_blocked_until})"
-            string += f"\n- Issued {human_blocked_at} by <@{blocked_by_id}>"
+            string += f"\n- Issued {human_blocked_at} by <@{item.blocking_user_id}>"
 
-            reason = data.get("reason")
-            if reason:
-                string += f"\n- Blocked for {reason}"
+            if item.reason is not None:
+                string += f"\n- Blocked for {item.reason}"
+            string += "\n"
 
-            roles.append(string + "\n")
+            if item.type == blocklist.BlockType.USER:
+                users.append(string)
+            elif item.type == blocklist.BlockType.ROLE:
+                roles.append(string)
 
         user_embeds = [discord.Embed(title="Blocked Users", color=self.bot.main_color, description="")]
 
@@ -1713,7 +1970,7 @@ class Modmail(commands.Cog):
                 else:
                     embed.description += line
         else:
-            user_embeds[0].description = "Currently there are no blocked users."
+            user_embeds[0].description = "No users are currently blocked."
 
         if len(user_embeds) > 1:
             for n, em in enumerate(user_embeds):
@@ -1736,7 +1993,7 @@ class Modmail(commands.Cog):
                 else:
                     embed.description += line
         else:
-            role_embeds[-1].description = "Currently there are no blocked roles."
+            role_embeds[-1].description = "No roles are currently blocked."
 
         if len(role_embeds) > 1:
             for n, em in enumerate(role_embeds):
@@ -1763,7 +2020,6 @@ class Modmail(commands.Cog):
                 return await ctx.send_help(ctx.command)
 
         mention = getattr(user, "mention", f"`{user.id}`")
-        msg = ""
 
         if str(user.id) in self.bot.blocked_whitelisted_users:
             embed = discord.Embed(
@@ -1775,21 +2031,20 @@ class Modmail(commands.Cog):
             return await ctx.send(embed=embed)
 
         self.bot.blocked_whitelisted_users.append(str(user.id))
-
-        if str(user.id) in self.bot.blocked_users:
-            msg = self.bot.blocked_users.get(str(user.id)) or ""
-            self.bot.blocked_users.pop(str(user.id))
-
         await self.bot.config.update()
 
-        if msg.startswith("System Message: "):
-            # If the user is blocked internally (for example: below minimum account age)
-            # Show an extended message stating the original internal message
-            reason = msg[16:].strip().rstrip(".")
+        blocked: bool
+        blocklist_entry: blocklist.BlocklistEntry
+
+        blocked, blocklist_entry = await self.bot.blocklist.is_id_blocked(user.id)
+        if blocked:
+            await self.bot.blocklist.unblock_id(user.id)
             embed = discord.Embed(
                 title="Success",
-                description=f"{mention} was previously blocked internally for "
-                f'"{reason}". {mention} is now whitelisted.',
+                description=f"""
+                {mention} has been whitelisted.
+                They were previously blocked by <@{blocklist_entry.blocking_user_id}> {" for "+blocklist_entry.reason if blocklist_entry.reason is not None else ""}.
+                """,
                 color=self.bot.main_color,
             )
         else:
@@ -1825,7 +2080,7 @@ class Modmail(commands.Cog):
         user_or_role = ctx.thread.recipient if (ctx.thread and not user_or_role) else user_or_role
 
         if not user_or_role:
-            raise commands.MissingRequiredArgument(SimpleNamespace(name="user"))
+            raise commands.MissingRequiredArgument(DummyParam("user"))
 
         mention = getattr(user_or_role, "mention", f"`{user_or_role.id}`")
 
@@ -1843,8 +2098,6 @@ class Modmail(commands.Cog):
         ):
             return await send_embed("Error", f"Cannot block {mention}, user is whitelisted.")
 
-        now, blocked = discord.utils.utcnow(), dict()
-
         desc = f"{mention} is now blocked."
         if duration:
             desc += f"\n- Expires: {discord.utils.format_dt(duration.dt, style='R')}"
@@ -1852,24 +2105,24 @@ class Modmail(commands.Cog):
         if reason:
             desc += f"\n- Reason: {reason}"
 
-        blocked["blocked_at"] = str(now)
-        blocked["blocked_by"] = ctx.author.id
-        if duration:
-            blocked["until"] = str(duration.dt)
-        if reason:
-            blocked["reason"] = reason
+        blocktype: BlockType
 
         if isinstance(user_or_role, discord.Role):
-            self.bot.blocked_roles[str(user_or_role.id)] = blocked
+            blocktype = BlockType.ROLE
         elif isinstance(user_or_role, discord.User):
-            blocked_users = self.bot.blocked_users
-            blocked_users[str(user_or_role.id)] = blocked
+            blocktype = BlockType.USER
         else:
             return logger.warning(
                 f"{__name__}: cannot block user, user is neither an instance of Discord Role or User"
             )
 
-        await self.bot.config.update()
+        await self.bot.blocklist.block_id(
+            user_id=user_or_role.id,
+            reason=reason,
+            expires_at=duration.dt if duration is not None else None,
+            blocked_by=ctx.author.id,
+            block_type=blocktype,
+        )
 
         return await send_embed("Success", desc)
 
@@ -1887,7 +2140,7 @@ class Modmail(commands.Cog):
         user_or_role = ctx.thread.recipient if (ctx.thread and not user_or_role) else user_or_role
 
         if not user_or_role:
-            raise commands.MissingRequiredArgument(SimpleNamespace(name="user"))
+            raise commands.MissingRequiredArgument(DummyParam("user or role"))
 
         mention = getattr(user_or_role, "mention", f"`{user_or_role.id}`")
 
@@ -1899,22 +2152,13 @@ class Modmail(commands.Cog):
             )
             return await ctx.send(embed=embed)
 
-        title, desc = "Error", f"{mention} is not blocked."
-
-        if isinstance(user_or_role, discord.Role):
-            if str(user_or_role.id) not in self.bot.blocked_roles:
-                return await send_embed(title, desc)
-            self.bot.blocked_roles.pop(str(user_or_role.id))
-        elif isinstance(user_or_role, discord.User):
-            if str(user_or_role.id) not in self.bot.blocked_users:
-                return await send_embed(title, desc)
-            self.bot.blocked_users.pop(str(user_or_role.id))
-        else:
+        if not isinstance(user_or_role, (discord.Role, discord.User)):
             return logger.warning(
                 f"{__name__}: cannot unblock, user is neither an instance of Discord Role or User"
             )
 
-        await self.bot.config.update()
+        if not await self.bot.blocklist.unblock_id(user_or_role.id):
+            return await send_embed("Error", f"{mention} is not blocked.")
 
         return await send_embed("Success", f"{mention} has been unblocked.")
 
@@ -1939,7 +2183,7 @@ class Modmail(commands.Cog):
             return await ctx.send(
                 embed=discord.Embed(
                     title="Failed",
-                    description="Cannot find a message to delete. Plain messages are not supported.",
+                    description=str(e),
                     color=self.bot.error_color,
                 )
             )
@@ -2052,7 +2296,9 @@ class Modmail(commands.Cog):
                 thread.ready = True
                 logger.info("Setting current channel's topic to User ID and created new thread.")
                 await ctx.channel.edit(
-                    reason="Fix broken Modmail thread", name=name, topic=f"User ID: {user.id}"
+                    reason="Fix broken Modmail thread",
+                    name=name,
+                    topic=f"User ID: {user.id}",
                 )
                 return await self.bot.add_reaction(ctx.message, sent_emoji)
 
@@ -2158,6 +2404,355 @@ class Modmail(commands.Cog):
             )
 
         return await ctx.send(embed=embed)
+
+    @commands.command(usage="[duration]")
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    @checks.thread_only()
+    async def snooze(self, ctx: ModmailCommandContext, *, duration: UserFriendlyTime = None):
+        """
+        Snooze this thread. Behavior depends on config:
+        - delete (default): deletes the channel and restores it later
+        - move: moves the channel to the configured snoozed category
+            Optionally specify a duration, e.g. 'snooze 2d' for 2 days.
+            Uses config: snooze_default_duration, snooze_title, snooze_text
+        """
+        assert ctx.thread is not None
+        thread: Thread = ctx.thread
+        if thread.snoozed:
+            await ctx.send("This thread is already snoozed.")
+            logger.debug(
+                f"Tried to snooze thread {getattr(thread.recipient, 'id', None)}, but it was already snoozed"
+            )
+            return
+        # Default snooze duration with safe fallback
+        try:
+            default_snooze = int(self.bot.config.get("snooze_default_duration") or 604800)
+        except (ValueError, TypeError):
+            default_snooze = 604800
+        if duration:
+            snooze_for = int((duration.dt - duration.now).total_seconds())
+        else:
+            snooze_for = default_snooze
+
+        assert self.bot.modmail_guild is not None
+
+        # Capacity pre-check: if behavior is move, ensure snoozed category has room (<49 channels)
+        behavior = (self.bot.config.get("snooze_behavior") or "delete").lower()
+        if behavior == "move":
+            snoozed_cat_id = self.bot.config.get("snoozed_category_id")
+            target_category = None
+            if snoozed_cat_id:
+                try:
+                    target_category = self.bot.modmail_guild.get_channel(int(snoozed_cat_id))
+                except Exception:
+                    target_category = None
+            # Auto-create snoozed category if missing
+            if not isinstance(target_category, discord.CategoryChannel):
+                try:
+                    logger.debug("Auto-creating snoozed category for move-based snoozing.")
+                    # Hide category by default; only bot can view/manage
+                    overwrites: dict[
+                        Union[discord.Role, discord.Member, discord.Object], discord.PermissionOverwrite
+                    ] = {self.bot.modmail_guild.default_role: discord.PermissionOverwrite(view_channel=False)}
+                    bot_member = self.bot.modmail_guild.me
+                    if bot_member is not None:
+                        overwrites[bot_member] = discord.PermissionOverwrite(
+                            view_channel=True,
+                            send_messages=True,
+                            read_message_history=True,
+                            manage_channels=True,
+                            manage_messages=True,
+                            attach_files=True,
+                            embed_links=True,
+                            add_reactions=True,
+                        )
+                    target_category = await self.bot.modmail_guild.create_category(
+                        name="Snoozed Threads",
+                        overwrites=overwrites,
+                        reason="Auto-created snoozed category for move-based snoozing",
+                    )
+                    try:
+                        logger.info(
+                            f"Creating snoozed category {target_category.name} (ID: {target_category.id}) and saving to config."
+                        )
+                        await self.bot.config.set("snoozed_category_id", target_category.id)
+                        await self.bot.config.update()
+                    except Exception as e:
+                        logger.exception("Failed to persist snoozed_category_id: %s", e)
+                        try:
+                            await ctx.send(
+                                embed=discord.Embed(
+                                    title="Could not create snoozed category",
+                                    description=(
+                                        "Created snoozed category but failed to save it to config. Please set `snoozed_category_id` manually."
+                                    ),
+                                    color=self.bot.error_color,
+                                )
+                            )
+                        except Exception as e:
+                            logger.exception(
+                                "Failed to notify about snoozed category persistence issue: %s",
+                                e,
+                            )
+                    await ctx.send(
+                        embed=discord.Embed(
+                            title="Snoozed category created",
+                            description=(
+                                f"Created category {target_category.mention if hasattr(target_category, 'mention') else target_category.name} "
+                                "and set it as `snoozed_category_id`."
+                            ),
+                            color=self.bot.main_color,
+                        )
+                    )
+                except Exception as e:
+                    await ctx.send(
+                        embed=discord.Embed(
+                            title="Could not create snoozed category",
+                            description=(
+                                "I couldn't create a category automatically. Please ensure I have Manage Channels "
+                                "permission, or set `snoozed_category_id` manually."
+                            ),
+                            color=self.bot.error_color,
+                        )
+                    )
+                    logger.exception("Failed to auto-create snoozed category: %s", e)
+            # Capacity check after ensuring category exists
+            if isinstance(target_category, discord.CategoryChannel):
+                try:
+                    if len(target_category.channels) >= 49:
+                        await ctx.send(
+                            embed=discord.Embed(
+                                title="Snooze unavailable",
+                                description=(
+                                    "The configured snoozed category is full (49 channels). "
+                                    "Unsnooze or move some channels out before snoozing more."
+                                ),
+                                color=self.bot.error_color,
+                            )
+                        )
+                        return
+                except Exception as e:
+                    logger.exception("Failed to check snoozed category channel count: %s", e)
+
+        # Store snooze_until timestamp for reliable auto-unsnooze
+        now = datetime.now(timezone.utc)
+        snooze_until = now + timedelta(seconds=snooze_for)
+        await self.bot.api.logs.update_one(
+            {"recipient.id": str(thread.id), "open": True, "_id": str(thread.key)},
+            {
+                "$set": {
+                    "snooze_start": now,
+                    "snooze_for": snooze_for,
+                    "snooze_until": snooze_until,
+                }
+            },
+        )
+        cmd_message = await ctx.send(
+            embed=discord.Embed(
+                title=self.bot.config.get("snooze_title") or "Thread Snoozed",
+                description=self.bot.config.get("snooze_text") or "This thread has been snoozed.",
+                color=self.bot.error_color,
+            )
+        )
+        ok = await thread.snooze(
+            moderator=ctx.author, snooze_for=snooze_for, ignored_message_ids={cmd_message.id}
+        )
+        if ok:
+            logger.info(f"Thread for {getattr(thread.recipient, 'id', None)} snoozed for {snooze_for}s.")
+            self.bot.threads.cache[thread.id] = thread
+        else:
+            await ctx.send("Failed to snooze this thread.")
+            logger.error(f"Failed to snooze thread for {getattr(thread.recipient, 'id', None)}.")
+
+    @commands.command()
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    async def unsnooze(self, ctx: ModmailCommandContext, *, user: str | None = None):
+        """
+        Unsnooze a thread: restores the channel and replays messages.
+        You can specify a user by mention or ID, or run in a thread channel to unsnooze that thread.
+        Uses config: unsnooze_text
+        """
+
+        assert self.bot.threads is not None
+
+        thread: Thread | None = None
+
+        user_obj = None
+        if user is not None:
+            user_id = self._resolve_user(user)
+            if user_id:
+                try:
+                    user_obj = await self.bot.get_or_fetch_user(user_id)
+                except Exception:
+                    logger.debug(
+                        "Failed fetching user during unsnooze; falling back to partial object (%s).",
+                        user_id,
+                        exc_info=True,
+                    )
+                    user_obj = discord.Object(user_id)
+            if user_obj:
+                thread = await self.bot.threads.find(recipient=user_obj)
+            if not thread:
+                await ctx.send(f"No thread found for user {user} (obj: {user_obj}).")
+                logger.warning(f"No thread found for user {user} (obj: {user_obj})")
+                return
+        elif hasattr(ctx, "thread"):
+            thread = ctx.thread
+        else:
+            await ctx.send("This is not a Modmail thread.")
+            logger.debug("Snooze command ran without thread context")
+            return
+        assert thread is not None
+        if not thread.snoozed:
+            await ctx.send("This thread is not snoozed.")
+            logger.info(f"Tried to unsnooze non-snoozed Thread for {getattr(thread.recipient, 'id', None)}")
+            return
+
+        # Manually fetch snooze_data if the thread object doesn't have it
+        if not thread.snooze_data:
+            log_entry = await self.bot.api.logs.find_one(
+                {"recipient.id": str(thread.id), "snoozed": True, "_id": str(thread.key)}
+            )
+            if log_entry:
+                thread.snooze_data = log_entry.get("snooze_data")
+            else:
+                logger.warning("unable to find thread data")
+
+        ok = await thread.restore_from_snooze()
+        if ok:
+            self.bot.threads.cache[thread.id] = thread
+            await ctx.send(
+                self.bot.config.get("unsnooze_text") or "This thread has been unsnoozed and restored."
+            )
+            logger.info(f"{getattr(thread.recipient, 'id', None)} unsnoozed thread")
+        else:
+            await ctx.send("Failed to unsnooze this thread.")
+            logger.error(
+                f"unsnooze command failed to unsnooze thread for {getattr(thread.recipient, 'id', None)}"
+            )
+
+    @commands.command()
+    @checks.has_permissions(PermissionLevel.SUPPORTER)
+    async def snoozed(self, ctx: commands.Context):
+        """
+        List all currently snoozed threads/users.
+        """
+        snoozed_threads = [thread for thread in self.bot.threads.cache.values() if thread.snoozed]
+        if not snoozed_threads:
+            await ctx.send("No threads are currently snoozed.")
+            return
+
+        # TODO this should really be a
+        lines = []
+        now = datetime.now(timezone.utc)
+        for thread in snoozed_threads:
+            user = thread.recipient.name if thread.recipient else "Unknown"
+            user_id = thread.id
+
+            since_str = "?"
+            until_str = "?"
+            since_dt = None
+
+            if thread.snooze_data:
+                since = thread.snooze_data.get("snooze_start")
+                duration = thread.snooze_data.get("snooze_for")
+
+                if since:
+                    since_dt = self._to_utc_datetime(since)
+                    if since_dt is not None:
+                        since_str = f"<t:{int(since_dt.timestamp())}:R>"  # Discord relative timestamp
+                    else:
+                        logger.warning(f"Invalid snooze_start for {user_id}: {since}")
+                else:
+                    logger.warning(f" Missing snooze_start for {user_id}")
+
+                if duration is not None and since_dt is not None:
+                    try:
+                        until_dt = since_dt + timedelta(seconds=int(duration))
+                        until_str = f"<t:{int(until_dt.timestamp())}:R>"
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Invalid until time for {user_id}: {since} + {duration} ({e})")
+
+            lines.append(f"- {user} (`{user_id}`) since {since_str}, until {until_str}")
+
+        await ctx.send("**Snoozed threads:**\n" + "\n".join(lines))
+
+    async def cog_load(self):
+        self.snooze_auto_unsnooze.start()
+
+    @tasks.loop(seconds=10)
+    async def snooze_auto_unsnooze(self):
+        now = datetime.now(timezone.utc)
+        snoozed = await self.bot.api.logs.find(
+            {"snoozed": True, "open": True, "snooze_until": {"$lte": now}}
+        ).to_list(None)
+        for entry in snoozed:
+            snooze_until = entry.get("snooze_until")
+            if snooze_until:
+                try:
+                    until_dt = self._to_utc_datetime(snooze_until)
+                    if until_dt is None:
+                        continue
+                    if now >= until_dt:
+                        thread = await self.bot.threads.find(recipient_id=int(entry["recipient"]["id"]))
+                        if thread and thread.snoozed:
+                            await thread.restore_from_snooze()
+                except (ValueError, TypeError) as e:
+                    logger.error(
+                        "Failed parsing snooze_until timestamp for auto-unsnooze loop: %s",
+                        e,
+                    )
+
+    @commands.command()
+    @checks.has_permissions(PermissionLevel.OWNER)
+    async def clearsnoozed(self, ctx: commands.Context):
+        """
+        List all snoozed threads and ask for confirmation before clearing (unsnoozing) all of them.
+        Only proceed if the user confirms.
+        """
+        snoozed = await self.bot.api.logs.find({"snoozed": True}).to_list(None)
+        if not snoozed:
+            await ctx.send("No threads are currently snoozed.")
+            return
+        lines = []
+        for entry in snoozed:
+            user = entry.get("recipient", {}).get("name", "Unknown")
+            user_id = entry.get("recipient", {}).get("id", "?")
+            lines.append(f"- {user} (`{user_id}`)")
+        await ctx.send(
+            "The following threads are currently snoozed and will be unsnoozed if you confirm:\n"
+            + "\n".join(lines)
+            + "\n\nType `yes` to confirm, or anything else to cancel."
+        )
+
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel
+
+        try:
+            reply = await self.bot.wait_for("message", check=check, timeout=30)
+        except asyncio.TimeoutError:
+            await ctx.send("Timed out. No threads were unsnoozed.")
+            return
+        if reply.content.strip().lower() != "yes":
+            await ctx.send("Cancelled. No threads were unsnoozed.")
+            return
+        count = 0
+        for entry in snoozed:
+            user_id = entry.get("recipient", {}).get("id")
+            if not user_id:
+                continue
+            user_obj = None
+            try:
+                user_obj = await self.bot.get_or_fetch_user(int(user_id))
+            except Exception:
+                user_obj = discord.Object(int(user_id))
+            thread = await self.bot.threads.find(recipient=user_obj)
+            if thread and thread.snoozed:
+                ok = await thread.restore_from_snooze()
+                if ok:
+                    self.bot.threads.cache[thread.id] = thread
+                    count += 1
+        await ctx.send(f"Unsnoozed {count} threads.")
 
 
 async def setup(bot):

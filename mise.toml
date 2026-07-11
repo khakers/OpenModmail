@@ -1,0 +1,4 @@
+[tools]
+act = "latest"
+pdm = "latest"
+python = "3.12"

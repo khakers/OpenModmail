@@ -8,9 +8,6 @@ on:
       - 'develop'
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - 'develop'
 
 env:
   REGISTRY: ghcr.io
@@ -24,23 +21,25 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+#      - name: Checkout repository
+#        uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
       - name: Log in to the Container registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v4
+      - name: Extract metadata (tags, labels) for Docker main
+        id: docker-meta-base
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=schedule,pattern=nightly
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
@@ -49,11 +48,18 @@ jobs:
             type=sha
             # set latest tag for stable releases
             type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
+          bake-target: docker-metadata-action
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v3
+      - name: Build and push
+        uses: docker/bake-action@v6
         with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+#          source: .
+          push: ${{ ! startsWith(github.ref, 'refs/pull/') && ! github.event.act }}
+          pull: true
+          sbom: true
+          files: |            
+            ./docker-bake.hcl
+            cwd://${{ steps.docker-meta-base.outputs.bake-file }}
+          targets: openmodmail
+
+

@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.8"]
+        python-version: ["3.11"]
     name: Python ${{ matrix.python-version }} on ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -21,12 +21,16 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         architecture: x64
+    - name: Setup PDM
+      uses: pdm-project/setup-pdm@v4
+      with:
+        cache: true
     - name: Install dependencies
       run: |
-        python -m pip install black ruff
+        pdm install --group dev
     - name: Ruff
-      run: ruff . --no-fix
+      run: pdm run ruff . --no-fix
       continue-on-error: true
     - name: Black
       run: |
-        black . --diff --check
+        pdm run black . --diff --check

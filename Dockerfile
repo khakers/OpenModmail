@@ -1,27 +1,49 @@
-FROM python:3.11-alpine as base
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-alpine AS base
 
 RUN apk update && apk add git \
-	# cairosvg dependencies
-	cairo-dev cairo cairo-tools \
 	# pillow dependencies
 	jpeg-dev zlib-dev
 
-FROM base as python-deps
+FROM base AS python-deps
 
 RUN apk add --virtual build-deps build-base gcc libffi-dev
-COPY requirements.txt /
-RUN pip install --prefix=/inst -U -r /requirements.txt
 
-FROM base as runtime
+#Install pdm
+RUN pip install -U pip setuptools wheel
+RUN pip install pdm
 
-ENV USING_DOCKER yes
-COPY --from=python-deps /inst /usr/local
+FROM python-deps AS builder
 
-COPY . /modmail
+COPY  pyproject.toml pdm.lock README.md /modmail/
+
 WORKDIR /modmail
 
+RUN pdm install --check --prod --no-editable --fail-fast;
+
+ARG INCLUDE_SUPPORTUTILS=false
+ARG INCLUDE_PIP=false
+
+RUN if [ "$INCLUDE_SUPPORTUTILS" = "true" ]; then \
+        pdm install --prod -G supportutils --no-editable --fail-fast; \
+    fi
+
+RUN if [ "$INCLUDE_PIP" = "true" ]; then \
+        /modmail/.venv/bin/python -m ensurepip --upgrade; \
+    fi
+
+FROM base AS runtime
+
+RUN adduser --disabled-password modmail
+USER modmail
+
+
+ENV USING_DOCKER=yes
+COPY --chown=modmail:modmail --from=builder /modmail /modmail
+
+COPY --chown=modmail:modmail . /modmail
+WORKDIR /modmail
+
+ENV PATH="/modmail/.venv/bin:${PATH}"
 CMD ["python", "bot.py"]
 
-RUN adduser --disabled-password --gecos '' app && \
-    chown -R app /modmail
-USER app

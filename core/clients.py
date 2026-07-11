@@ -1,17 +1,22 @@
 import secrets
 import sys
+import typing
 from json import JSONDecodeError
 from typing import Any, Dict, Optional, Union
 
 import discord
 from aiohttp import ClientResponse, ClientResponseError
-from discord import DMChannel, Member, Message, TextChannel
+from discord import DMChannel, Member, Message, TextChannel, User
 from discord.ext import commands
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo.errors import ConfigurationError
 from pymongo.uri_parser import parse_uri
 
 from core.models import InvalidConfigError, getLogger
+from core.s3_archive import S3ArchiveConfig, S3AttachmentArchiver
+
+if typing.TYPE_CHECKING:
+    from bot import ModmailBot
 
 logger = getLogger(__name__)
 
@@ -133,7 +138,9 @@ class GitHub:
             return await self._get_response_data(resp)
 
     @staticmethod
-    async def _get_response_data(response: ClientResponse) -> Union[Dict[str, Any], str]:
+    async def _get_response_data(
+        response: ClientResponse,
+    ) -> Union[Dict[str, Any], str]:
         """
         Internal method to convert the response data to `dict` if the data is a
         json object, or to `str` (raw response) if the data is not a valid json.
@@ -297,7 +304,7 @@ class ApiClient:
         The bot's current running `ClientSession`.
     """
 
-    def __init__(self, bot, db):
+    def __init__(self, bot: "ModmailBot", db):
         self.bot = bot
         self.db = db
         self.session = bot.session
@@ -344,7 +351,7 @@ class ApiClient:
                 return await resp.text()
 
     @property
-    def logs(self):
+    def logs(self) -> AsyncIOMotorCollection:
         return self.db.logs
 
     async def setup_indexes(self):
@@ -354,6 +361,9 @@ class ApiClient:
         return NotImplemented
 
     async def get_user_logs(self, user_id: Union[str, int]) -> list:
+        return NotImplemented
+
+    async def find_log_entry(self, key: str) -> list:
         return NotImplemented
 
     async def get_latest_user_logs(self, user_id: Union[str, int]):
@@ -429,6 +439,12 @@ class ApiClient:
     async def get_user_info(self) -> Optional[dict]:
         return NotImplemented
 
+    async def update_title(self, title: str, channel_id: Union[str, int]):
+        return NotImplemented
+
+    async def update_nsfw(self, nsfw: bool, channel_id: Union[str, int]):
+        return NotImplemented
+
 
 class MongoDBClient(ApiClient):
     def __init__(self, bot):
@@ -457,6 +473,10 @@ class MongoDBClient(ApiClient):
 
         super().__init__(bot, db)
 
+    @property
+    def logs(self) -> AsyncIOMotorCollection:
+        return self.db.logs
+
     async def setup_indexes(self):
         """Setup text indexes so we can use the $search operator"""
         coll = self.db.logs
@@ -474,8 +494,13 @@ class MongoDBClient(ApiClient):
             logger.info('Creating "text" index for logs collection.')
             logger.info("Name: %s", index_name)
             await coll.create_index(
-                [("messages.content", "text"), ("messages.author.name", "text"), ("key", "text")]
+                [
+                    ("messages.content", "text"),
+                    ("messages.author.name", "text"),
+                    ("key", "text"),
+                ]
             )
+        await coll.create_index("channel_id", unique=True)
         logger.debug("Successfully configured and verified database indexes.")
 
     async def validate_database_connection(self, *, ssl_retry=True):
@@ -531,8 +556,19 @@ class MongoDBClient(ApiClient):
 
         return await self.logs.find(query, projection).to_list(None)
 
+    async def find_log_entry(self, key: str) -> list:
+        query = {"key": key}
+        projection = {"messages": {"$slice": 5}}
+        logger.debug(f"Retrieving log ID {key}.")
+
+        return await self.logs.find(query, projection).to_list(None)
+
     async def get_latest_user_logs(self, user_id: Union[str, int]):
-        query = {"recipient.id": str(user_id), "guild_id": str(self.bot.guild_id), "open": False}
+        query = {
+            "recipient.id": str(user_id),
+            "guild_id": str(self.bot.guild_id),
+            "open": False,
+        }
         projection = {"messages": {"$slice": 5}}
         logger.debug("Retrieving user %s latest logs.", user_id)
 
@@ -567,7 +603,7 @@ class MongoDBClient(ApiClient):
             prefix = ""
         return f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{doc['key']}"
 
-    async def create_log_entry(self, recipient: Member, channel: TextChannel, creator: Member) -> str:
+    async def create_log_entry(self, recipient: Member | User, channel: TextChannel, creator: Member) -> str:
         key = secrets.token_hex(6)
 
         dm_channel = await recipient.create_dm()
@@ -587,14 +623,14 @@ class MongoDBClient(ApiClient):
                     "id": str(recipient.id),
                     "name": recipient.name,
                     "discriminator": recipient.discriminator,
-                    "avatar_url": recipient.display_avatar.url,
+                    "avatar_url": recipient.display_avatar.url if recipient.display_avatar else None,
                     "mod": False,
                 },
                 "creator": {
                     "id": str(creator.id),
                     "name": creator.name,
                     "discriminator": creator.discriminator,
-                    "avatar_url": creator.display_avatar.url,
+                    "avatar_url": creator.display_avatar.url if creator.display_avatar else None,
                     "mod": isinstance(creator, Member),
                 },
                 "closer": None,
@@ -605,7 +641,7 @@ class MongoDBClient(ApiClient):
         prefix = self.bot.config["log_url_prefix"].strip("/")
         if prefix == "NONE":
             prefix = ""
-        return f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{key}"
+        return key
 
     async def delete_log_entry(self, key: str) -> bool:
         result = await self.logs.delete_one({"key": key})
@@ -642,12 +678,65 @@ class MongoDBClient(ApiClient):
         self,
         message: Message,
         *,
-        message_id: str = "",
-        channel_id: str = "",
+        message_id: str | int = "",
+        channel_id: str | int = "",
+        thread_key: str,
         type_: str = "thread_message",
     ) -> dict:
         channel_id = str(channel_id) or str(message.channel.id)
         message_id = str(message_id) or str(message.id)
+
+        # Build attachments list with base metadata
+        attachments = [
+            {
+                "id": a.id,
+                "filename": a.filename,
+                # In previous versions this was true for both videos and images
+                "is_image": a.content_type and a.content_type.startswith("image/"),
+                "size": a.size,
+                "url": a.url,
+                "content_type": a.content_type,
+                "description": a.description,
+                "type": "openmodmail_discord_v1",
+                "width": a.width,
+                "height": a.height,
+            }
+            for a in message.attachments
+        ]
+
+        # Archive attachments to S3 if configured
+        if message.attachments and self.bot.config.get("s3_enabled"):
+            try:
+                # We use self.bot.user later and should awlways be logged in at the point we are calling this code
+                assert self.bot.user
+                s3_config = S3ArchiveConfig(
+                    enabled=self.bot.config.get("s3_enabled") or False,
+                    bucket=self.bot.config.get("s3_bucket"),
+                    region=self.bot.config.get("s3_region") or "",
+                    access_key_id=self.bot.config.get("s3_access_key_id"),
+                    secret_access_key=self.bot.config.get("s3_secret_access_key"),
+                    endpoint=self.bot.config.get("s3_endpoint"),
+                    # We should always be logged in at this point
+                    key_prefix=self.bot.config.get("s3_key_prefix") or f"modmail/{self.bot.user.id}/attachments/",
+                )
+                archiver = S3AttachmentArchiver(s3_config)
+                
+                s3_metadata_list = await archiver.archive_attachments(
+                    message.attachments,
+                    thread_id=thread_key,
+                    message_id=message_id,
+                )
+                
+                # Merge S3 metadata into attachments
+                for i, att in enumerate(attachments):
+                    meta = s3_metadata_list[i] if i < len(s3_metadata_list) else None
+                    if meta is not None:
+                        att["s3"] = meta
+                        att["type"] = "openmodmail_s3_v1"
+            except Exception as e:
+                logger.error("S3 archival failed for message %s: %s", message_id, e)
+                raise e
+                # Continue without S3 archival; Discord URLs are still available
 
         data = {
             "timestamp": str(message.created_at),
@@ -656,25 +745,45 @@ class MongoDBClient(ApiClient):
                 "id": str(message.author.id),
                 "name": message.author.name,
                 "discriminator": message.author.discriminator,
-                "avatar_url": message.author.display_avatar.url,
+                "avatar_url": message.author.display_avatar.url if message.author.display_avatar else None,
                 "mod": not isinstance(message.channel, DMChannel),
             },
             "content": message.content,
             "type": type_,
-            "attachments": [
+            "attachments": attachments,
+            "messageReference": {
+                "message_id": message.reference.message_id,
+                "channel_id": message.reference.channel_id,
+                "guild_id": message.reference.guild_id,
+                "type": message.reference.type.name,
+            } if message.reference else None,
+            "messageSnapshots": [
                 {
-                    "id": a.id,
-                    "filename": a.filename,
-                    "is_image": a.width is not None,
-                    "size": a.size,
-                    "url": a.url,
+                    "type": m.type.name,
+                    "content": m.content,
+                    "attachments": [
+                        {
+                            "id": a.id,
+                            "filename": a.filename,
+                            # In previous versions this was true for both videos and images
+                            "is_image": a.content_type and a.content_type.startswith("image/"),
+                            "size": a.size,
+                            "url": a.url,
+                            "content_type": a.content_type,
+                        }
+                        for a in m.attachments
+                    ],
+                    "timestamp": m.created_at,
+                    "editedTimestamp": m.edited_at,
                 }
-                for a in message.attachments
+                for m in message.message_snapshots
             ],
         }
 
         return await self.logs.find_one_and_update(
-            {"channel_id": channel_id}, {"$push": {"messages": data}}, return_document=True
+            {"channel_id": channel_id},
+            {"$push": {"messages": data}},
+            return_document=True,
         )
 
     async def post_log(self, channel_id: Union[int, str], data: dict) -> dict:
@@ -682,9 +791,41 @@ class MongoDBClient(ApiClient):
             {"channel_id": str(channel_id)}, {"$set": data}, return_document=True
         )
 
+    async def close_log(
+        self,
+        channel_id: int | str,
+        closer: discord.Member | discord.User,
+        message: Optional[str],
+        title: str,
+        silent: bool = False,
+        scheduled: bool = False,
+    ) -> dict:
+        data = {
+            "open": False,
+            "title": title,
+            "closed_at": str(discord.utils.utcnow()),
+            "close_message": message,
+            "silent_close": silent,
+            "scheduled_close": scheduled,
+            "closer": {
+                "id": str(closer.id),
+                "name": closer.name,
+                "discriminator": closer.discriminator,
+                "avatar_url": closer.display_avatar.url,
+                "mod": True,
+            },
+        }
+        return await self.logs.find_one_and_update(
+            {"channel_id": str(channel_id)}, {"$set": data}, return_document=True
+        )
+
     async def search_closed_by(self, user_id: Union[int, str]):
         return await self.logs.find(
-            {"guild_id": str(self.bot.guild_id), "open": False, "closer.id": str(user_id)},
+            {
+                "guild_id": str(self.bot.guild_id),
+                "open": False,
+                "closer.id": str(user_id),
+            },
             {"messages": {"$slice": 5}},
         ).to_list(None)
 
@@ -698,7 +839,7 @@ class MongoDBClient(ApiClient):
             {"messages": {"$slice": 5}},
         ).to_list(limit)
 
-    async def create_note(self, recipient: Member, message: Message, message_id: Union[int, str]):
+    async def create_note(self, recipient: Member | discord.User, message: Message, message_id: Union[int, str]):
         await self.db.notes.insert_one(
             {
                 "recipient": str(recipient.id),
@@ -706,14 +847,16 @@ class MongoDBClient(ApiClient):
                     "id": str(message.author.id),
                     "name": message.author.name,
                     "discriminator": message.author.discriminator,
-                    "avatar_url": message.author.display_avatar.url,
+                    "avatar_url": (
+                        message.author.display_avatar.url if message.author.display_avatar else None
+                    ),
                 },
                 "message": message.content,
                 "message_id": str(message_id),
             }
         )
 
-    async def find_notes(self, recipient: Member):
+    async def find_notes(self, recipient: Member | discord.User):
         return await self.db.notes.find({"recipient": str(recipient.id)}).to_list(None)
 
     async def update_note_ids(self, ids: dict):
@@ -755,6 +898,14 @@ class MongoDBClient(ApiClient):
                     "url": user.url,
                 }
             }
+
+    async def update_title(self, title: str, channel_id: Union[str, int]):
+        await self.bot.db.logs.find_one_and_update(
+            {"channel_id": str(channel_id)}, {"$set": {"title": title}}
+        )
+
+    async def update_nsfw(self, nsfw: bool, channel_id: Union[str, int]):
+        await self.bot.db.logs.find_one_and_update({"channel_id": str(channel_id)}, {"$set": {"nsfw": nsfw}})
 
 
 class PluginDatabaseClient:
