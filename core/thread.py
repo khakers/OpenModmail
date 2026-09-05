@@ -198,15 +198,17 @@ class Thread:
         if flag:
             for i in self.wait_tasks:
                 i.cancel()
-
-    @property
-    def log_url(self, log_key: None | str) -> str:
+                
+    def get_log_url(self, log_key: None | str = None) -> str:
         prefix = self.bot.config["log_url_prefix"].strip("/")
         if prefix == "NONE":
             prefix = ""
         return (
             f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{log_key if log_key else self.log_key}"
         )
+    @property
+    def log_url(self) -> str:
+        return self.get_log_url()
 
     async def snooze(self, moderator: discord.User | discord.Member | None=None, command_used=None, snooze_for=None, ignored_message_ids: set[int]=None ):
         """
@@ -1252,7 +1254,7 @@ class Thread:
             log_data = None
 
         # TODO log_key isn't defined for some reason
-        log_url = self.log_url(log_data["key"])
+        log_url = self.get_log_url(log_data["key"])
 
         if isinstance(log_data, dict):
             if log_data["title"]:
