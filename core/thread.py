@@ -200,12 +200,12 @@ class Thread:
                 i.cancel()
 
     @property
-    def log_url(self) -> str:
+    def log_url(self, log_key: None | str) -> str:
         prefix = self.bot.config["log_url_prefix"].strip("/")
         if prefix == "NONE":
             prefix = ""
         return (
-            f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{self.log_key}"
+            f"{self.bot.config['log_url'].strip('/')}{'/' + prefix if prefix else ''}/{log_key if log_key else self.log_key}"
         )
 
     async def snooze(self, moderator: discord.User | discord.Member | None=None, command_used=None, snooze_for=None, ignored_message_ids: set[int]=None ):
@@ -1251,9 +1251,10 @@ class Thread:
         else:
             log_data = None
 
-        if isinstance(log_data, dict):
-            log_url = self.log_url
+        # TODO log_key isn't defined for some reason
+        log_url = self.log_url(log_data["key"])
 
+        if isinstance(log_data, dict):
             if log_data["title"]:
                 sneak_peak = log_data["title"]
             elif log_data["messages"]:
