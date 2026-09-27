@@ -402,6 +402,7 @@ class ApiClient:
         *,
         message_id: str = "",
         channel_id: str = "",
+        thread_key: str,
         type_: str = "thread_message",
     ) -> dict:
         return NotImplemented

@@ -1600,9 +1600,9 @@ class ModmailBot(commands.Bot):
                         await thread.reply(message, message.content, anonymous=anonymous, plain=plain)
                     else:
                         logger.debug(f"Message {message.id} ignored because it started with the ignore_prefix.")
-                        await self.api.append_log(message, type_="internal")
+                        await self.api.append_log(message, thread_key=thread.key, type_="internal")
                 else:
-                    await self.api.append_log(message, type_="internal")
+                    await self.api.append_log(message, thread_key=thread.key, type_="internal")
             elif ctx.invoked_with:
                 exc = commands.CommandNotFound(f'Command "{ctx.invoked_with}" is not found')
                 self.dispatch("command_error", ctx, exc)
