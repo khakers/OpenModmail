@@ -49,6 +49,6 @@ typing-extensions==4.6.3
 urllib3==2.3.0
 utils @ git+https://github.com/Jerrie-Aries/modmail-plugins.git@0d7ad9c5611d8649022557d5d55848c6ba6f4d4b#subdirectory=utils
 uvloop==0.21.0; sys_platform != "win32"
-virtualenv==20.30.0
+virtualenv==21.7.13
 yarl==1.18.3
 --index-url https://pypi.org/simple
