@@ -46,7 +46,7 @@ six==1.17.0
 strenum==0.4.15
 tomli==2.2.1
 typing-extensions==4.6.3
-urllib3==2.3.0
+urllib3==2.8.0
 utils @ git+https://github.com/Jerrie-Aries/modmail-plugins.git@0d7ad9c5611d8649022557d5d55848c6ba6f4d4b#subdirectory=utils
 uvloop==0.21.0; sys_platform != "win32"
 virtualenv==20.30.0
