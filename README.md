@@ -82,25 +82,15 @@ Images with '-pip' include pip installed into the virtual environment, which is 
 Modmail supports the use of third-party plugins to extend or add functionalities to the bot.
 Plugins allow niche features as well as anything else outside the scope of core Modmail functionality. 
 
-You can find a list of third-party plugins using the `?plugins registry`  command on the bot or by reading through the official [REGISTRY.json](https://github.com/modmail-dev/modmail/blob/master/plugins/registry.json).
-
-> [!NOTE]
-> Modmail has deleted their github wiki
-
-To develop your own, check out the [plugins documentation](https://github.com/modmail-dev/modmail/wiki/Plugins).
-
-Plugins requests and support are available in the [Modmail Support Server](https://discord.gg/cnUpwrnpYb).
-
 ## Support & Issues
 
 Issues with the bot can be opened through [GitHub Issues](https://github.com/khakers/openmodmail/issues/new/choose).
-
 
 ## Contributing
 
 Check out the [contributing guidelines](https://github.com/khakers/modmail/blob/stable/.github/CONTRIBUTING.md) before you get started.
 
-The [develop](https://github.com/khakers/openmodmail/tree/develop) branch is where most of the features are tested before stable release.
+The Develop branch is deprecated. Features are created on seperate branches and then merged into main
 
 This project has included pre-commit script that automatically runs black and ruff linter on every commit.
 
